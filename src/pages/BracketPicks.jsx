@@ -26,36 +26,37 @@ export default function BracketPicks() {
     loadData()
     timerRef.current = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(timerRef.current)
-  }, [user])
+  }, [user?.id])
 
   async function loadData() {
     setLoading(true)
+    const safeguard = setTimeout(() => setLoading(false), 8000)
     try {
-      const { data: settings } = await supabase.from('settings').select('*').single()
+      const queries = [
+        supabase.from('settings').select('*').single(),
+        supabase.from('bracket_matches').select('*').order('round_order').order('match_number'),
+      ]
+      if (user?.id) {
+        queries.push(supabase.from('bracket_picks').select('*').eq('user_id', user.id))
+      }
+
+      const [{ data: settings }, { data: matchData }, picksRes] = await Promise.all(queries)
+
       if (settings) {
         setLocked(settings.bracket_picks_locked)
         setUnlockAt(settings.bracket_unlock_at ? new Date(settings.bracket_unlock_at) : null)
       }
 
-      const { data: matchData } = await supabase
-        .from('bracket_matches')
-        .select('*')
-        .order('round_order').order('match_number')
       setMatches(matchData || [])
-
       const resultMap = {}
       ;(matchData || []).forEach(m => {
         if (m.result_entered) resultMap[m.id] = m.actual_winner
       })
       setResults(resultMap)
 
-      if (user) {
-        const { data: picks } = await supabase
-          .from('bracket_picks')
-          .select('*')
-          .eq('user_id', user.id)
+      if (picksRes?.data) {
         const pickMap = {}
-        ;(picks || []).forEach(p => {
+        picksRes.data.forEach(p => {
           pickMap[p.match_id] = {
             picked_winner: p.picked_winner,
             tb1: p.tiebreaker_score1,
@@ -67,6 +68,7 @@ export default function BracketPicks() {
     } catch (e) {
       setError('Failed to load bracket')
     } finally {
+      clearTimeout(safeguard)
       setLoading(false)
     }
   }

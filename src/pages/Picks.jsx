@@ -22,36 +22,38 @@ export default function Picks() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (user) loadData()
-  }, [user])
+    if (user?.id) loadData()
+  }, [user?.id])
 
   async function loadData() {
     setLoading(true)
+    const safeguard = setTimeout(() => setLoading(false), 8000)
     try {
-      const { data: settings } = await supabase.from('settings').select('*').single()
-      if (settings) setLocked(settings.group_picks_locked)
+      // Run all three queries in parallel
+      const [{ data: settings }, { data: gp }, { data: wp }] = await Promise.all([
+        supabase.from('settings').select('*').single(),
+        supabase.from('group_picks').select('*').eq('user_id', user.id),
+        supabase.from('wildcard_picks').select('team').eq('user_id', user.id),
+      ])
 
-      const { data: gp } = await supabase
-        .from('group_picks').select('*').eq('user_id', user.id)
+      if (settings) setLocked(settings.group_picks_locked)
 
       if (gp && gp.length > 0) {
         const parsed = {}
         gp.forEach(row => {
           parsed[row.group_id] = { winner: row.winner || '', runnerUp: row.runner_up || '' }
         })
-        // merge with defaults so all groups exist
         GROUPS.forEach(g => {
           if (!parsed[g.id]) parsed[g.id] = { winner: '', runnerUp: '' }
         })
         setGroupPicks(parsed)
       }
 
-      const { data: wp } = await supabase
-        .from('wildcard_picks').select('team').eq('user_id', user.id)
       if (wp && wp.length > 0) setWildcardPicks(wp.map(r => r.team))
     } catch {
-      setError('Failed to load picks')
+      setError('Failed to load picks. Check your connection.')
     } finally {
+      clearTimeout(safeguard)
       setLoading(false)
     }
   }
