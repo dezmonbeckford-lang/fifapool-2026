@@ -8,7 +8,6 @@ import Picks from './pages/Picks'
 import Leaderboard from './pages/Leaderboard'
 import Admin from './pages/Admin'
 
-// Waits for auth to load, then redirects to /login if not signed in
 function Protected({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="page-center"><div className="spinner" /></div>
@@ -16,7 +15,6 @@ function Protected({ children }) {
   return children
 }
 
-// Admin-only route
 function AdminRoute({ children }) {
   const { user, profile, loading } = useAuth()
   if (loading) return <div className="page-center"><div className="spinner" /></div>
@@ -25,29 +23,25 @@ function AdminRoute({ children }) {
   return children
 }
 
-function AppRoutes() {
+function Inner() {
   const { loading } = useAuth()
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div className="spinner" />
-      </div>
-    )
-  }
 
   return (
     <BrowserRouter>
       <Navbar />
       <main style={{ flex: 1 }}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
-          <Route path="/picks" element={<Protected><Picks /></Protected>} />
-          <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-        </Routes>
+        {loading ? (
+          <div className="page-center"><div className="spinner" /></div>
+        ) : (
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/picks" element={<Protected><Picks /></Protected>} />
+            <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+          </Routes>
+        )}
       </main>
     </BrowserRouter>
   )
@@ -56,7 +50,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <Inner />
     </AuthProvider>
   )
 }
