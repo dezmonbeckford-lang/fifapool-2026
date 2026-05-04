@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS } from '../data/groups'
-import { GROUP_POINTS, BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
+import { ROUND_LABELS } from '../data/scoring'
 import './Admin.css'
 
 export default function Admin() {
-  const { user, profile } = useAuth()
-  const navigate = useNavigate()
+  const { profile } = useAuth()
 
   const [tab, setTab] = useState('settings')
   const [settings, setSettings] = useState(null)
@@ -17,10 +15,8 @@ export default function Admin() {
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
-    if (!user) { navigate('/login'); return }
-    if (profile !== null && !profile?.is_admin) { navigate('/'); return }
     if (profile?.is_admin) loadSettings()
-  }, [user, profile])
+  }, [profile])
 
   async function loadSettings() {
     const { data } = await supabase.from('settings').select('*').single()

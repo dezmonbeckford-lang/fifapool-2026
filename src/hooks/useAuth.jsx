@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useContext, createContext } from 'react'
 import { supabase } from '../lib/supabase'
 
-export function useAuth() {
+const AuthContext = createContext(null)
+
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       if (session?.user) fetchProfile(session.user.id)
@@ -16,14 +19,9 @@ export function useAuth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) {
-        // On first sign-in after email confirmation, ensure profile exists
         if (event === 'SIGNED_IN') {
           const meta = session.user.user_metadata
-          await ensureProfile(
-            session.user.id,
-            session.user.email,
-            meta?.display_name
-          )
+          await ensureProfile(session.user.id, session.user.email, meta?.display_name)
         }
         fetchProfile(session.user.id)
       } else {
@@ -37,20 +35,14 @@ export function useAuth() {
 
   async function fetchProfile(userId) {
     const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    setProfile(data)
+      .from('profiles').select('*').eq('id', userId).single()
+    setProfile(data ?? null)
     setLoading(false)
   }
 
   async function ensureProfile(userId, email, displayName) {
     const { data: existing } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .single()
+      .from('profiles').select('id').eq('id', userId).single()
     if (!existing) {
       await supabase.from('profiles').insert({
         id: userId,
@@ -64,12 +56,9 @@ export function useAuth() {
   async function signUp(email, password, displayName) {
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) throw error
-    // If session exists (email confirm disabled), create profile immediately.
-    // If not (confirm required), profile is created on first sign-in via ensureProfile.
     if (data.session && data.user) {
       await ensureProfile(data.user.id, email, displayName)
     } else if (data.user) {
-      // Store display name in user metadata so we can use it after confirmation
       await supabase.auth.updateUser({ data: { display_name: displayName } })
     }
     return data
@@ -85,5 +74,13 @@ export function useAuth() {
     await supabase.auth.signOut()
   }
 
-  return { user, profile, loading, signUp, signIn, signOut }
+  return (
+    <AuthContext.Provider value={{ user, profile, loading, signUp, signIn, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  return useContext(AuthContext)
 }

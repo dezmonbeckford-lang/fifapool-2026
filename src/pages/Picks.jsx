@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
 import './Picks.css'
 
 export default function Picks() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const wildcardRef = useRef(null)
 
   const [locked, setLocked] = useState(false)
@@ -24,8 +22,7 @@ export default function Picks() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!user) { navigate('/login'); return }
-    loadData()
+    if (user) loadData()
   }, [user])
 
   async function loadData() {
