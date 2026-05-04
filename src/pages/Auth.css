@@ -1,0 +1,32 @@
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px 28px;
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.auth-icon { font-size: 40px; display: block; margin-bottom: 12px; }
+.auth-header h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+.auth-header p { color: var(--text2); font-size: 14px; }
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: var(--text2);
+}
+.auth-footer a { color: var(--accent); font-weight: 600; }

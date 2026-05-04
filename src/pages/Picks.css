@@ -1,0 +1,181 @@
+.picks-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px 16px 80px;
+}
+
+.picks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.picks-header h1 { font-size: 24px; font-weight: 800; }
+
+.picks-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.progress-bar {
+  width: 120px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.locked-banner {
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.3);
+  color: var(--gold);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.picks-section {
+  margin-bottom: 32px;
+}
+
+.section-header {
+  margin-bottom: 16px;
+}
+.section-header h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.section-header p { font-size: 13px; color: var(--text2); line-height: 1.5; }
+.section-note { opacity: 0.75; }
+
+/* Groups grid */
+.groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.group-card {
+  padding: 14px;
+  transition: border-color 0.2s;
+}
+.group-card.done { border-color: rgba(16,185,129,0.4); }
+
+.group-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.group-label { font-size: 12px; font-weight: 700; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
+.group-done-badge {
+  width: 18px; height: 18px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.group-teams { display: flex; flex-direction: column; gap: 6px; }
+
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+.team-row.is-winner { background: rgba(245,158,11,0.1); }
+.team-row.is-runner-up { background: rgba(16,185,129,0.08); }
+
+.team-flag { font-size: 18px; flex-shrink: 0; }
+.team-name { flex: 1; font-size: 13px; font-weight: 500; }
+
+.team-btns { display: flex; gap: 4px; }
+.pick-btn {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  transition: all 0.15s;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text2);
+}
+.pick-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.winner-btn.active { background: var(--gold); border-color: var(--gold); color: #000; }
+.runner-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pick-btn:not(:disabled):hover { border-color: var(--text2); color: var(--text); }
+
+/* Wildcard grid */
+.wildcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.wildcard-group {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wildcard-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.wildcard-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3);
+  border: 1px solid transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  transition: all 0.15s;
+  width: 100%;
+}
+.wildcard-team:not(:disabled):hover { border-color: var(--accent); }
+.wildcard-team.chosen { background: rgba(16,185,129,0.15); border-color: var(--accent); color: var(--accent); }
+.wildcard-team.ineligible { opacity: 0.4; cursor: not-allowed; }
+.wildcard-team:disabled:not(.ineligible) { opacity: 0.5; cursor: not-allowed; }
+
+.wc-check { margin-left: auto; font-size: 12px; color: var(--accent); }
+
+/* Save bar */
+.picks-save-bar {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg) 80%, transparent);
+  padding: 16px 0 calc(16px + env(safe-area-inset-bottom));
+  margin-top: 8px;
+}
+
+@media (max-width: 600px) {
+  .groups-grid { grid-template-columns: 1fr; }
+  .wildcard-grid { grid-template-columns: 1fr 1fr; }
+  .picks-save-bar { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+}
