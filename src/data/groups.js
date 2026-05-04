@@ -1,69 +1,45 @@
 export const GROUPS = [
-  {
-    id: 'A',
-    teams: ['USA', 'Mexico', 'Canada', 'Panama'],
-  },
-  {
-    id: 'B',
-    teams: ['Argentina', 'Ecuador', 'Chile', 'Peru'],
-  },
-  {
-    id: 'C',
-    teams: ['Brazil', 'Colombia', 'Paraguay', 'Bolivia'],
-  },
-  {
-    id: 'D',
-    teams: ['England', 'France', 'Netherlands', 'Belgium'],
-  },
-  {
-    id: 'E',
-    teams: ['Spain', 'Portugal', 'Croatia', 'Morocco'],
-  },
-  {
-    id: 'F',
-    teams: ['Germany', 'Italy', 'Switzerland', 'Cameroon'],
-  },
-  {
-    id: 'G',
-    teams: ['Japan', 'South Korea', 'Australia', 'Saudi Arabia'],
-  },
-  {
-    id: 'H',
-    teams: ['Uruguay', 'Venezuela', 'Jamaica', 'Costa Rica'],
-  },
-  {
-    id: 'I',
-    teams: ['Senegal', 'Nigeria', 'Egypt', 'Ivory Coast'],
-  },
-  {
-    id: 'J',
-    teams: ['Iran', 'Iraq', 'Qatar', 'Uzbekistan'],
-  },
-  {
-    id: 'K',
-    teams: ['New Zealand', 'Honduras', 'Cuba', 'Trinidad & Tobago'],
-  },
-  {
-    id: 'L',
-    teams: ['Tunisia', 'Algeria', 'DR Congo', 'South Africa'],
-  },
+  { id: 'A', teams: ['Mexico', 'South Korea', 'South Africa', 'Czechia'] },
+  { id: 'B', teams: ['Canada', 'Switzerland', 'Qatar', 'Bosnia-Herzegovina'] },
+  { id: 'C', teams: ['Brazil', 'Morocco', 'Scotland', 'Haiti'] },
+  { id: 'D', teams: ['USA', 'Paraguay', 'Australia', 'Türkiye'] },
+  { id: 'E', teams: ['Germany', 'Ecuador', 'Ivory Coast', 'Curaçao'] },
+  { id: 'F', teams: ['Netherlands', 'Japan', 'Tunisia', 'Sweden'] },
+  { id: 'G', teams: ['Belgium', 'Iran', 'Egypt', 'New Zealand'] },
+  { id: 'H', teams: ['Spain', 'Uruguay', 'Saudi Arabia', 'Cape Verde'] },
+  { id: 'I', teams: ['France', 'Senegal', 'Norway', 'Iraq'] },
+  { id: 'J', teams: ['Argentina', 'Austria', 'Algeria', 'Jordan'] },
+  { id: 'K', teams: ['Portugal', 'Colombia', 'Uzbekistan', 'DR Congo'] },
+  { id: 'L', teams: ['England', 'Croatia', 'Panama', 'Ghana'] },
 ]
 
 export const ALL_TEAMS = GROUPS.flatMap(g => g.teams)
 
 export const TEAM_FLAGS = {
-  'USA': '🇺🇸', 'Mexico': '🇲🇽', 'Canada': '🇨🇦', 'Panama': '🇵🇦',
-  'Argentina': '🇦🇷', 'Ecuador': '🇪🇨', 'Chile': '🇨🇱', 'Peru': '🇵🇪',
-  'Brazil': '🇧🇷', 'Colombia': '🇨🇴', 'Paraguay': '🇵🇾', 'Bolivia': '🇧🇴',
-  'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'France': '🇫🇷', 'Netherlands': '🇳🇱', 'Belgium': '🇧🇪',
-  'Spain': '🇪🇸', 'Portugal': '🇵🇹', 'Croatia': '🇭🇷', 'Morocco': '🇲🇦',
-  'Germany': '🇩🇪', 'Italy': '🇮🇹', 'Switzerland': '🇨🇭', 'Cameroon': '🇨🇲',
-  'Japan': '🇯🇵', 'South Korea': '🇰🇷', 'Australia': '🇦🇺', 'Saudi Arabia': '🇸🇦',
-  'Uruguay': '🇺🇾', 'Venezuela': '🇻🇪', 'Jamaica': '🇯🇲', 'Costa Rica': '🇨🇷',
-  'Senegal': '🇸🇳', 'Nigeria': '🇳🇬', 'Egypt': '🇪🇬', 'Ivory Coast': '🇨🇮',
-  'Iran': '🇮🇷', 'Iraq': '🇮🇶', 'Qatar': '🇶🇦', 'Uzbekistan': '🇺🇿',
-  'New Zealand': '🇳🇿', 'Honduras': '🇭🇳', 'Cuba': '🇨🇺', 'Trinidad & Tobago': '🇹🇹',
-  'Tunisia': '🇹🇳', 'Algeria': '🇩🇿', 'DR Congo': '🇨🇩', 'South Africa': '🇿🇦',
+  // Group A
+  'Mexico': '🇲🇽', 'South Korea': '🇰🇷', 'South Africa': '🇿🇦', 'Czechia': '🇨🇿',
+  // Group B
+  'Canada': '🇨🇦', 'Switzerland': '🇨🇭', 'Qatar': '🇶🇦', 'Bosnia-Herzegovina': '🇧🇦',
+  // Group C
+  'Brazil': '🇧🇷', 'Morocco': '🇲🇦', 'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Haiti': '🇭🇹',
+  // Group D
+  'USA': '🇺🇸', 'Paraguay': '🇵🇾', 'Australia': '🇦🇺', 'Türkiye': '🇹🇷',
+  // Group E
+  'Germany': '🇩🇪', 'Ecuador': '🇪🇨', 'Ivory Coast': '🇨🇮', 'Curaçao': '🇨🇼',
+  // Group F
+  'Netherlands': '🇳🇱', 'Japan': '🇯🇵', 'Tunisia': '🇹🇳', 'Sweden': '🇸🇪',
+  // Group G
+  'Belgium': '🇧🇪', 'Iran': '🇮🇷', 'Egypt': '🇪🇬', 'New Zealand': '🇳🇿',
+  // Group H
+  'Spain': '🇪🇸', 'Uruguay': '🇺🇾', 'Saudi Arabia': '🇸🇦', 'Cape Verde': '🇨🇻',
+  // Group I
+  'France': '🇫🇷', 'Senegal': '🇸🇳', 'Norway': '🇳🇴', 'Iraq': '🇮🇶',
+  // Group J
+  'Argentina': '🇦🇷', 'Austria': '🇦🇹', 'Algeria': '🇩🇿', 'Jordan': '🇯🇴',
+  // Group K
+  'Portugal': '🇵🇹', 'Colombia': '🇨🇴', 'Uzbekistan': '🇺🇿', 'DR Congo': '🇨🇩',
+  // Group L
+  'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'Croatia': '🇭🇷', 'Panama': '🇵🇦', 'Ghana': '🇬🇭',
 }
 
 export const WILDCARD_COUNT = 8
