@@ -81,7 +81,6 @@ export default function Leaderboard() {
               <span>Player</span>
               <span className="pts-col">Group</span>
               <span className="pts-col">Bracket</span>
-              <span className="pts-col potential-col">Potential</span>
               <span className="pts-col total-col">Total</span>
             </div>
             {entries.map((entry, index) => {
@@ -97,7 +96,6 @@ export default function Leaderboard() {
                   </span>
                   <span className="pts-col">{entry.group_points ?? 0}</span>
                   <span className="pts-col">{entry.bracket_points ?? 0}</span>
-                  <span className="pts-col potential-col">+{entry.potential_points ?? 0}</span>
                   <span className="pts-col total-col">{entry.total_points ?? 0}</span>
                 </div>
               )

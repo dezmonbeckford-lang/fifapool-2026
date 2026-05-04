@@ -20,26 +20,50 @@ export default function Admin() {
 
   async function loadSettings() {
     const { data } = await supabase.from('settings').select('*').single()
-    setSettings(data || {
-      phase: 1,
-      group_picks_locked: false,
-      bracket_picks_locked: false,
-    })
+    setSettings(data || { phase: 1, group_picks_locked: false, bracket_picks_locked: false })
     setLoading(false)
   }
 
   async function saveSettings() {
     setSaving(true)
-    const { error } = await supabase
-      .from('settings')
-      .upsert({ id: 1, ...settings })
+    const payload = { id: 1, ...settings }
+    // Convert local datetime string to ISO for storage
+    if (payload.bracket_unlock_at && typeof payload.bracket_unlock_at === 'string' && !payload.bracket_unlock_at.includes('Z')) {
+      payload.bracket_unlock_at = new Date(payload.bracket_unlock_at).toISOString()
+    }
+    const { error } = await supabase.from('settings').upsert(payload)
     setMsg(error ? `Error: ${error.message}` : '✓ Settings saved')
     setSaving(false)
+  }
+
+  async function recalcScores() {
+    setSaving(true)
+    const { error } = await supabase.rpc('calculate_group_scores')
+    setMsg(error ? `Error: ${error.message}` : '✓ All scores recalculated!')
+    setSaving(false)
+  }
+
+  // Format stored UTC timestamp to datetime-local string
+  function toDatetimeLocal(val) {
+    if (!val) return ''
+    try {
+      const d = new Date(val)
+      const pad = n => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    } catch { return '' }
   }
 
   if (loading || !profile?.is_admin) {
     return <div className="page-center"><div className="spinner" /></div>
   }
+
+  const tabs = [
+    ['settings', '⚙️ Settings'],
+    ['groups', '🏟️ Groups'],
+    ['bracket-setup', '🔧 Bracket Setup'],
+    ['bracket-results', '🏆 Results'],
+    ['players', '👥 Players'],
+  ]
 
   return (
     <div className="admin-page">
@@ -49,11 +73,11 @@ export default function Admin() {
       </div>
 
       <div className="admin-tabs">
-        {[['settings', '⚙️ Settings'], ['groups', '🏟️ Group Results'], ['bracket-setup', '🔧 Bracket Setup'], ['bracket', '🏆 Bracket Results']].map(([id, label]) => (
+        {tabs.map(([id, label]) => (
           <button
             key={id}
             className={`admin-tab${tab === id ? ' active' : ''}`}
-            onClick={() => setTab(id)}
+            onClick={() => { setTab(id); setMsg('') }}
           >
             {label}
           </button>
@@ -68,12 +92,12 @@ export default function Admin() {
 
       {tab === 'settings' && settings && (
         <div className="admin-section card">
-          <h2>Phase & Lock Settings</h2>
+          <h2>Phase &amp; Lock Settings</h2>
 
           <div className="setting-row">
             <div>
               <div className="setting-label">Current Phase</div>
-              <div className="setting-desc">Controls which phase is active for users</div>
+              <div className="setting-desc">Controls which phase is displayed to users</div>
             </div>
             <select
               className="input"
@@ -89,7 +113,7 @@ export default function Admin() {
           <div className="setting-row">
             <div>
               <div className="setting-label">Lock Group Picks</div>
-              <div className="setting-desc">Prevent users from changing group stage picks</div>
+              <div className="setting-desc">Prevent users from editing group stage picks</div>
             </div>
             <button
               className={`toggle-btn${settings.group_picks_locked ? ' on' : ''}`}
@@ -102,7 +126,7 @@ export default function Admin() {
           <div className="setting-row">
             <div>
               <div className="setting-label">Lock Bracket Picks</div>
-              <div className="setting-desc">Prevent users from changing bracket picks</div>
+              <div className="setting-desc">Prevent users from editing bracket picks</div>
             </div>
             <button
               className={`toggle-btn${settings.bracket_picks_locked ? ' on' : ''}`}
@@ -112,22 +136,43 @@ export default function Admin() {
             </button>
           </div>
 
-          <button className="btn btn-primary" onClick={saveSettings} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Settings'}
-          </button>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">Bracket Unlock Date &amp; Time</div>
+              <div className="setting-desc">When bracket picks open to users (your local time)</div>
+            </div>
+            <input
+              type="datetime-local"
+              className="input"
+              style={{ width: 'auto' }}
+              value={toDatetimeLocal(settings.bracket_unlock_at)}
+              onChange={e => setSettings(s => ({ ...s, bracket_unlock_at: e.target.value }))}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={saveSettings} disabled={saving}>
+              {saving ? 'Saving…' : 'Save Settings'}
+            </button>
+            <button className="btn btn-outline" onClick={recalcScores} disabled={saving}>
+              🔄 Recalculate All Scores
+            </button>
+          </div>
         </div>
       )}
 
       {tab === 'groups' && <GroupResultsTab onMsg={setMsg} />}
       {tab === 'bracket-setup' && <BracketSetupTab onMsg={setMsg} />}
-      {tab === 'bracket' && <BracketResultsTab onMsg={setMsg} />}
+      {tab === 'bracket-results' && <BracketResultsTab onMsg={setMsg} />}
+      {tab === 'players' && <PlayersTab onMsg={setMsg} />}
     </div>
   )
 }
 
+// ── Group Results ───────────────────────────────────────────────
 function GroupResultsTab({ onMsg }) {
-  const [results, setResults] = useState({}) // { A: { winner: '', runnerUp: '' } }
-  const [wildcardAdvancers, setWildcardAdvancers] = useState([]) // 8 teams
+  const [results, setResults] = useState({})
+  const [wildcardAdvancers, setWildcardAdvancers] = useState([])
   const [existing, setExisting] = useState({})
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -135,13 +180,14 @@ function GroupResultsTab({ onMsg }) {
   useEffect(() => { loadExisting() }, [])
 
   async function loadExisting() {
-    const { data } = await supabase.from('group_results').select('*')
+    const [{ data: gr }, { data: wa }] = await Promise.all([
+      supabase.from('group_results').select('*'),
+      supabase.from('wildcard_advancers').select('team'),
+    ])
     const r = {}
-    if (data) data.forEach(row => { r[row.group_id] = { winner: row.winner, runnerUp: row.runner_up } })
+    if (gr) gr.forEach(row => { r[row.group_id] = { winner: row.winner, runnerUp: row.runner_up } })
     setExisting(r)
     setResults(r)
-
-    const { data: wa } = await supabase.from('wildcard_advancers').select('team')
     if (wa) setWildcardAdvancers(wa.map(r => r.team))
     setLoading(false)
   }
@@ -157,33 +203,30 @@ function GroupResultsTab({ onMsg }) {
   async function handleSave() {
     setSaving(true)
     try {
-      // Save group results
       const rows = Object.entries(results)
         .filter(([, v]) => v.winner && v.runnerUp)
-        .map(([groupId, v]) => ({
-          group_id: groupId,
-          winner: v.winner,
-          runner_up: v.runnerUp,
-        }))
+        .map(([groupId, v]) => ({ group_id: groupId, winner: v.winner, runner_up: v.runnerUp }))
 
-      if (rows.length > 0) {
-        const { error } = await supabase
-          .from('group_results')
-          .upsert(rows, { onConflict: 'group_id' })
-        if (error) throw error
-      }
+      const [grRes, waDelRes] = await Promise.all([
+        rows.length > 0
+          ? supabase.from('group_results').upsert(rows, { onConflict: 'group_id' })
+          : Promise.resolve({ error: null }),
+        supabase.from('wildcard_advancers').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+      ])
+      if (grRes.error) throw grRes.error
+      if (waDelRes.error) throw waDelRes.error
 
-      // Save wildcard advancers
-      await supabase.from('wildcard_advancers').delete().neq('id', 0)
       if (wildcardAdvancers.length > 0) {
-        await supabase.from('wildcard_advancers').insert(wildcardAdvancers.map(team => ({ team })))
+        const { error: waErr } = await supabase
+          .from('wildcard_advancers')
+          .insert(wildcardAdvancers.map(team => ({ team })))
+        if (waErr) throw waErr
       }
 
-      // Score all users
       const { error: scoreErr } = await supabase.rpc('calculate_group_scores')
       if (scoreErr) throw scoreErr
 
-      onMsg('✓ Group results saved and all scores updated!')
+      onMsg(`✓ ${rows.length} group results saved, scores updated!`)
       loadExisting()
     } catch (err) {
       onMsg(`Error: ${err.message}`)
@@ -203,7 +246,7 @@ function GroupResultsTab({ onMsg }) {
     <div className="admin-section">
       <div className="admin-section-header">
         <h2>Group Stage Results</h2>
-        <p>Enter the final 1st and 2nd place for each group, then select the 8 best 3rd-place advancers.</p>
+        <p>Enter 1st and 2nd place for each group. Then select the 8 best 3rd-place advancers.</p>
       </div>
 
       <div className="groups-results-grid">
@@ -215,38 +258,20 @@ function GroupResultsTab({ onMsg }) {
               <div className="admin-group-label">
                 Group {group.id} {done && <span className="badge badge-green">Done</span>}
               </div>
-
               <div className="admin-group-row">
                 <label className="label">🥇 Winner</label>
-                <select
-                  className="input"
-                  value={r.winner}
-                  onChange={e => setResults(prev => ({
-                    ...prev,
-                    [group.id]: { ...r, winner: e.target.value }
-                  }))}
-                >
+                <select className="input" value={r.winner}
+                  onChange={e => setResults(prev => ({ ...prev, [group.id]: { ...r, winner: e.target.value } }))}>
                   <option value="">— select —</option>
-                  {group.teams.map(team => (
-                    <option key={team} value={team}>{TEAM_FLAGS[team]} {team}</option>
-                  ))}
+                  {group.teams.map(team => <option key={team} value={team}>{TEAM_FLAGS[team]} {team}</option>)}
                 </select>
               </div>
-
               <div className="admin-group-row">
                 <label className="label">🥈 Runner-up</label>
-                <select
-                  className="input"
-                  value={r.runnerUp}
-                  onChange={e => setResults(prev => ({
-                    ...prev,
-                    [group.id]: { ...r, runnerUp: e.target.value }
-                  }))}
-                >
+                <select className="input" value={r.runnerUp}
+                  onChange={e => setResults(prev => ({ ...prev, [group.id]: { ...r, runnerUp: e.target.value } }))}>
                   <option value="">— select —</option>
-                  {group.teams.map(team => (
-                    <option key={team} value={team}>{TEAM_FLAGS[team]} {team}</option>
-                  ))}
+                  {group.teams.map(team => <option key={team} value={team}>{TEAM_FLAGS[team]} {team}</option>)}
                 </select>
               </div>
             </div>
@@ -256,17 +281,14 @@ function GroupResultsTab({ onMsg }) {
 
       <div className="wildcard-advancers card">
         <h3>8 Best 3rd-Place Advancers ({wildcardAdvancers.length}/8)</h3>
-        <p className="admin-sub">Select exactly 8 teams that advance as the best 3rd-place finishers. These are compared against users' Wildcard Picks.</p>
+        <p className="admin-sub">Select exactly 8 teams that advance as best 3rd-place finishers.</p>
         <div className="wa-grid">
           {allTeams.filter(t => !pickedAsGroupAdvancer.has(t)).map(team => {
             const on = wildcardAdvancers.includes(team)
             return (
-              <button
-                key={team}
-                className={`wa-btn${on ? ' on' : ''}`}
+              <button key={team} className={`wa-btn${on ? ' on' : ''}`}
                 onClick={() => toggleWildcardAdvancer(team)}
-                disabled={!on && wildcardAdvancers.length >= 8}
-              >
+                disabled={!on && wildcardAdvancers.length >= 8}>
                 {TEAM_FLAGS[team]} {team} {on && '✓'}
               </button>
             )
@@ -281,56 +303,64 @@ function GroupResultsTab({ onMsg }) {
   )
 }
 
-function BracketSetupTab({ onMsg }) {
-  const ROUND_ORDER_MAP = { R32: 0, R16: 1, QF: 2, SF: 3, THIRD: 4, FINAL: 5 }
-  const emptyR32 = Array.from({ length: 32 }, (_, i) => ({
-    _key: i,
-    team1: '', team2: '',
-    round: 'R32', match_number: i + 1, round_order: 0, is_final: false,
-  }))
+// ── Bracket Setup ───────────────────────────────────────────────
+const ROUND_POINTS = { R32: 5, R16: 8, QF: 11, SF: 14, THIRD: 10, FINAL: 17 }
 
-  const [matches, setMatches] = useState([])
-  const [rows, setRows] = useState(emptyR32)
+function BracketSetupTab({ onMsg }) {
+  const [r32Matches, setR32Matches] = useState([])
+  const [initialized, setInitialized] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { loadMatches() }, [])
 
-  async function load() {
+  async function loadMatches() {
     const { data } = await supabase
       .from('bracket_matches')
       .select('*')
       .eq('round', 'R32')
       .order('match_number')
     if (data?.length) {
-      setMatches(data)
-      setRows(data.map((m, i) => ({ _key: i, team1: m.team1 || '', team2: m.team2 || '', round: 'R32', match_number: m.match_number, round_order: 0, is_final: false, id: m.id })))
+      setInitialized(true)
+      setR32Matches(data.map(m => ({ id: m.id, team1: m.team1 || '', team2: m.team2 || '', match_number: m.match_number })))
+    } else {
+      setInitialized(false)
+      setR32Matches(Array.from({ length: 16 }, (_, i) => ({ id: null, team1: '', team2: '', match_number: i + 1 })))
     }
     setLoading(false)
   }
 
-  function update(idx, field, val) {
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r))
-  }
-
-  async function handleSave() {
-    const filled = rows.filter(r => r.team1 && r.team2)
-    if (!filled.length) { onMsg('Error: Enter at least one matchup'); return }
+  async function handleInit() {
+    if (!window.confirm('This will create the full bracket structure (R32 through Final) and CLEAR any existing bracket picks. Continue?')) return
     setSaving(true)
     try {
-      const upsertRows = filled.map(r => ({
-        ...(r.id ? { id: r.id } : {}),
-        team1: r.team1, team2: r.team2,
-        round: 'R32', match_number: r.match_number,
-        round_order: 0, is_final: false,
-        result_entered: false,
-      }))
-      const { error } = await supabase
-        .from('bracket_matches')
-        .upsert(upsertRows, { onConflict: 'id' })
+      const { error } = await supabase.rpc('generate_bracket')
       if (error) throw error
+      onMsg('✓ Bracket structure created! Now fill in the 16 R32 matchups.')
+      loadMatches()
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSaveTeams() {
+    const filled = r32Matches.filter(m => m.team1 && m.team2)
+    if (!filled.length) { onMsg('Error: Fill in at least one matchup first'); return }
+    setSaving(true)
+    try {
+      for (const m of filled) {
+        if (m.id) {
+          const { error } = await supabase
+            .from('bracket_matches')
+            .update({ team1: m.team1, team2: m.team2 })
+            .eq('id', m.id)
+          if (error) throw error
+        }
+      }
       onMsg(`✓ ${filled.length} R32 matchups saved! Users can now make bracket picks.`)
-      load()
+      loadMatches()
     } catch (err) {
       onMsg(`Error: ${err.message}`)
     } finally {
@@ -338,20 +368,8 @@ function BracketSetupTab({ onMsg }) {
     }
   }
 
-  async function handleClear() {
-    if (!window.confirm('Delete ALL bracket matches? This cannot be undone.')) return
-    setSaving(true)
-    try {
-      const { error } = await supabase.from('bracket_matches').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-      if (error) throw error
-      setRows(emptyR32)
-      setMatches([])
-      onMsg('✓ All bracket matches cleared.')
-    } catch (err) {
-      onMsg(`Error: ${err.message}`)
-    } finally {
-      setSaving(false)
-    }
+  function update(idx, field, val) {
+    setR32Matches(prev => prev.map((m, i) => i === idx ? { ...m, [field]: val } : m))
   }
 
   if (loading) return <div className="spinner" />
@@ -359,51 +377,55 @@ function BracketSetupTab({ onMsg }) {
   return (
     <div className="admin-section">
       <div className="admin-section-header">
-        <h2>Setup R32 Bracket</h2>
-        <p>Enter the 32 matchups for the Round of 32. Once saved, users can start making bracket picks.</p>
+        <h2>Bracket Setup</h2>
+        <p>First initialize the bracket structure, then fill in the 16 Round of 32 matchups.</p>
       </div>
 
-      {matches.length > 0 && (
-        <div className="success-msg" style={{ marginBottom: 16 }}>
-          ✓ {matches.length} R32 matchups already saved. Edit below and re-save to update.
-        </div>
-      )}
-
-      <div className="bracket-setup-grid">
-        {rows.map((row, idx) => (
-          <div key={row._key} className="bsu-row card">
-            <span className="bsu-num">{idx + 1}</span>
-            <input
-              className="input bsu-input"
-              placeholder="Team 1"
-              value={row.team1}
-              onChange={e => update(idx, 'team1', e.target.value)}
-            />
-            <span className="bsu-vs">vs</span>
-            <input
-              className="input bsu-input"
-              placeholder="Team 2"
-              value={row.team2}
-              onChange={e => update(idx, 'team2', e.target.value)}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-        <button className="btn btn-primary btn-lg" onClick={handleSave} disabled={saving} style={{ flex: 1 }}>
-          {saving ? 'Saving…' : '💾 Save R32 Matchups'}
-        </button>
-        {matches.length > 0 && (
-          <button className="btn btn-outline" onClick={handleClear} disabled={saving} style={{ color: '#ef4444', borderColor: '#ef4444' }}>
-            Clear All
+      {!initialized ? (
+        <div className="card" style={{ textAlign: 'center', padding: 32 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🏆</div>
+          <h3>Bracket Not Initialized</h3>
+          <p style={{ color: 'var(--text2)', margin: '8px 0 20px' }}>
+            Click below to create the full bracket structure (R32 → Final).<br />
+            <strong>Warning:</strong> This clears all existing bracket picks.
+          </p>
+          <button className="btn btn-primary btn-lg" onClick={handleInit} disabled={saving}>
+            {saving ? 'Initializing…' : '🚀 Initialize Bracket Structure'}
           </button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          <div className="success-msg" style={{ marginBottom: 16 }}>
+            ✓ Bracket initialized. Fill in team names for all 16 R32 matches.
+          </div>
+          <div className="bracket-setup-grid">
+            {r32Matches.map((row, idx) => (
+              <div key={idx} className="bsu-row card">
+                <span className="bsu-num">{idx + 1}</span>
+                <input className="input bsu-input" placeholder="Team 1"
+                  value={row.team1} onChange={e => update(idx, 'team1', e.target.value)} />
+                <span className="bsu-vs">vs</span>
+                <input className="input bsu-input" placeholder="Team 2"
+                  value={row.team2} onChange={e => update(idx, 'team2', e.target.value)} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+            <button className="btn btn-primary btn-lg" onClick={handleSaveTeams} disabled={saving} style={{ flex: 1 }}>
+              {saving ? 'Saving…' : '💾 Save R32 Matchups'}
+            </button>
+            <button className="btn btn-outline" onClick={handleInit} disabled={saving}
+              style={{ color: '#ef4444', borderColor: '#ef4444' }}>
+              Reset
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
+// ── Bracket Results ─────────────────────────────────────────────
 function BracketResultsTab({ onMsg }) {
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
@@ -429,12 +451,9 @@ function BracketResultsTab({ onMsg }) {
         .update({ actual_winner: winner, result_entered: true })
         .eq('id', matchId)
       if (error) throw error
-
-      // Score this match
       const { error: scoreErr } = await supabase.rpc('score_bracket_match', { match_id: matchId })
       if (scoreErr) throw scoreErr
-
-      onMsg(`✓ Result saved and scores updated!`)
+      onMsg('✓ Result saved and scores updated!')
       loadMatches()
     } catch (err) {
       onMsg(`Error: ${err.message}`)
@@ -451,22 +470,20 @@ function BracketResultsTab({ onMsg }) {
     byRound[m.round].push(m)
   })
 
-  const roundOrder = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
-
   return (
     <div className="admin-section">
       <div className="admin-section-header">
         <h2>Bracket Results</h2>
-        <p>Enter match winners one at a time. Scores update instantly.</p>
+        <p>Enter match winners as games are played. Scores update instantly for all players.</p>
       </div>
 
       {matches.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--text2)' }}>
-          Bracket matches will appear here once the group stage is complete and the bracket is generated.
+          No bracket matches yet. Go to "Bracket Setup" first.
         </div>
       )}
 
-      {roundOrder.map(round => {
+      {['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL'].map(round => {
         const roundMatches = byRound[round]
         if (!roundMatches?.length) return null
         const done = roundMatches.filter(m => m.result_entered).length
@@ -478,12 +495,8 @@ function BracketResultsTab({ onMsg }) {
             </div>
             <div className="bracket-matches-list">
               {roundMatches.map(match => (
-                <MatchResultRow
-                  key={match.id}
-                  match={match}
-                  onSave={saveResult}
-                  isSaving={saving === match.id}
-                />
+                <MatchResultRow key={match.id} match={match}
+                  onSave={saveResult} isSaving={saving === match.id} />
               ))}
             </div>
           </div>
@@ -495,7 +508,6 @@ function BracketResultsTab({ onMsg }) {
 
 function MatchResultRow({ match, onSave, isSaving }) {
   const [selected, setSelected] = useState(match.actual_winner || '')
-
   return (
     <div className={`match-row card${match.result_entered ? ' done' : ''}`}>
       <div className="match-teams">
@@ -504,30 +516,97 @@ function MatchResultRow({ match, onSave, isSaving }) {
         <span>{TEAM_FLAGS[match.team2] || '🏳️'} {match.team2 || 'TBD'}</span>
       </div>
       {match.result_entered ? (
-        <div className="match-result-done">
-          ✓ Winner: <strong>{TEAM_FLAGS[match.actual_winner]} {match.actual_winner}</strong>
-        </div>
+        <div className="match-result-done">✓ Winner: <strong>{TEAM_FLAGS[match.actual_winner]} {match.actual_winner}</strong></div>
       ) : (
         <div className="match-result-input">
-          <select
-            className="input"
-            value={selected}
-            onChange={e => setSelected(e.target.value)}
-            disabled={!match.team1 || !match.team2}
-          >
+          <select className="input" value={selected} onChange={e => setSelected(e.target.value)}
+            disabled={!match.team1 || !match.team2}>
             <option value="">— select winner —</option>
             {match.team1 && <option value={match.team1}>{TEAM_FLAGS[match.team1]} {match.team1}</option>}
             {match.team2 && <option value={match.team2}>{TEAM_FLAGS[match.team2]} {match.team2}</option>}
           </select>
-          <button
-            className="btn btn-primary btn-sm"
+          <button className="btn btn-primary btn-sm"
             onClick={() => onSave(match.id, selected)}
-            disabled={!selected || isSaving}
-          >
+            disabled={!selected || isSaving}>
             {isSaving ? '…' : 'Save'}
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Players Tab ─────────────────────────────────────────────────
+function PlayersTab({ onMsg }) {
+  const [players, setPlayers] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { loadPlayers() }, [])
+
+  async function loadPlayers() {
+    const [{ data: profiles }, { data: scores }, { data: gp }] = await Promise.all([
+      supabase.from('profiles').select('id, display_name, email, is_admin, created_at').order('created_at'),
+      supabase.from('scores').select('user_id, group_points, bracket_points, total_points'),
+      supabase.from('group_picks').select('user_id'),
+    ])
+
+    const scoreMap = {}
+    if (scores) scores.forEach(s => { scoreMap[s.user_id] = s })
+
+    const gpSet = new Set()
+    if (gp) gp.forEach(p => gpSet.add(p.user_id))
+
+    setPlayers((profiles || []).map(p => ({
+      ...p,
+      score: scoreMap[p.id] || null,
+      hasPicks: gpSet.has(p.id),
+    })))
+    setLoading(false)
+  }
+
+  async function toggleAdmin(userId, currentVal) {
+    if (!window.confirm(`${currentVal ? 'Remove' : 'Grant'} admin access for this user?`)) return
+    const { error } = await supabase.from('profiles').update({ is_admin: !currentVal }).eq('id', userId)
+    if (error) { onMsg(`Error: ${error.message}`); return }
+    onMsg(`✓ Admin access ${currentVal ? 'removed' : 'granted'}.`)
+    loadPlayers()
+  }
+
+  if (loading) return <div className="spinner" />
+
+  return (
+    <div className="admin-section">
+      <div className="admin-section-header">
+        <h2>Players ({players.length})</h2>
+        <p>All registered users, their pick status, and current scores.</p>
+      </div>
+
+      <div className="players-table card">
+        <div className="players-header">
+          <span>Player</span>
+          <span>Picks</span>
+          <span>Pts</span>
+          <span>Admin</span>
+        </div>
+        {players.map(p => (
+          <div key={p.id} className="player-row">
+            <div className="player-info">
+              <span className="player-name">{p.display_name}</span>
+              <span className="player-email">{p.email}</span>
+            </div>
+            <span className={`picks-badge${p.hasPicks ? ' done' : ''}`}>
+              {p.hasPicks ? '✓ Done' : '—'}
+            </span>
+            <span className="player-pts">{p.score?.total_points ?? 0}</span>
+            <button
+              className={`toggle-btn toggle-btn-sm${p.is_admin ? ' on' : ''}`}
+              onClick={() => toggleAdmin(p.id, p.is_admin)}
+            >
+              {p.is_admin ? '✓' : '—'}
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

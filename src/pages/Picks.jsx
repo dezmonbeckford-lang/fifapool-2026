@@ -122,19 +122,27 @@ export default function Picks() {
     if (locked) return
     setError('')
     setSaving(true)
+    const saveTimer = setTimeout(() => {
+      setSaving(false)
+      setError('Save timed out — check your connection and try again.')
+    }, 15000)
+
     try {
-      const rows = GROUPS.map(g => ({
+      const groupRows = GROUPS.map(g => ({
         user_id: user.id,
         group_id: g.id,
         winner: groupPicks[g.id]?.winner || null,
         runner_up: groupPicks[g.id]?.runnerUp || null,
       }))
-      const { error: gpErr } = await supabase
-        .from('group_picks')
-        .upsert(rows, { onConflict: 'user_id,group_id' })
-      if (gpErr) throw gpErr
 
-      await supabase.from('wildcard_picks').delete().eq('user_id', user.id)
+      // upsert group picks and clear old wildcard picks simultaneously
+      const [{ error: gpErr }, { error: delErr }] = await Promise.all([
+        supabase.from('group_picks').upsert(groupRows, { onConflict: 'user_id,group_id' }),
+        supabase.from('wildcard_picks').delete().eq('user_id', user.id),
+      ])
+      if (gpErr) throw gpErr
+      if (delErr) throw delErr
+
       if (wildcardPicks.length > 0) {
         const { error: wpErr } = await supabase
           .from('wildcard_picks')
@@ -143,10 +151,11 @@ export default function Picks() {
       }
 
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => setSaved(false), 4000)
     } catch (err) {
-      setError(err.message || 'Failed to save picks')
+      setError(err.message || 'Failed to save picks. Try again.')
     } finally {
+      clearTimeout(saveTimer)
       setSaving(false)
     }
   }

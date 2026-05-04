@@ -177,3 +177,34 @@
 
 /* Leaderboard potential col */
 .potential-col { color: var(--accent); font-weight: 600; }
+
+/* Players tab */
+.players-table { padding: 0; overflow: hidden; }
+.players-header {
+  display: grid;
+  grid-template-columns: 1fr 72px 56px 56px;
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text2);
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+.player-row {
+  display: grid;
+  grid-template-columns: 1fr 72px 56px 56px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+.player-row:last-child { border-bottom: none; }
+.player-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.player-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-email { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picks-badge { font-size: 12px; font-weight: 700; color: var(--text2); }
+.picks-badge.done { color: var(--accent); }
+.player-pts { font-weight: 700; font-size: 14px; }
+.toggle-btn-sm { padding: 4px 10px !important; font-size: 12px !important; min-width: 0 !important; }

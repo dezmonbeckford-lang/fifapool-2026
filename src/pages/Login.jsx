@@ -69,6 +69,9 @@ export default function Login() {
         </form>
 
         <p className="auth-footer">
+          <Link to="/forgot-password" style={{ color: 'var(--text2)', fontSize: '0.85rem' }}>Forgot password?</Link>
+        </p>
+        <p className="auth-footer">
           No account? <Link to="/register">Join the pool →</Link>
         </p>
       </div>
