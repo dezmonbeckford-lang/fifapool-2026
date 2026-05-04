@@ -14,45 +14,39 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true
 
-    // Safety net: never hang forever
+    // If Supabase never responds, unblock the UI after 5s
     const failsafe = setTimeout(() => {
       if (mounted) setLoading(false)
-    }, 8000)
+    }, 5000)
 
-    async function init() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!mounted) return
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await fetchProfile(session.user.id)
-        } else {
-          setLoading(false)
-        }
-      } catch (e) {
-        console.error('Auth init error:', e)
-        if (mounted) setLoading(false)
-      } finally {
-        clearTimeout(failsafe)
-      }
-    }
-
-    init()
-
+    // onAuthStateChange fires immediately with INITIAL_SESSION —
+    // no need for a separate getSession() call
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          if (event === 'SIGNED_IN') {
-            const meta = session.user.user_metadata
-            await ensureProfile(session.user.id, session.user.email, meta?.display_name)
+        clearTimeout(failsafe)
+
+        const u = session?.user ?? null
+        setUser(u)
+
+        if (u) {
+          try {
+            if (event === 'SIGNED_IN') {
+              // create profile row if first time
+              const meta = u.user_metadata
+              await ensureProfile(u.id, u.email, meta?.display_name)
+            }
+            const { data } = await supabase
+              .from('profiles').select('*').eq('id', u.id).single()
+            if (mounted) setProfile(data ?? null)
+          } catch {
+            if (mounted) setProfile(null)
           }
-          await fetchProfile(session.user.id)
         } else {
           setProfile(null)
-          setLoading(false)
         }
+
+        if (mounted) setLoading(false)
       }
     )
 
@@ -62,18 +56,6 @@ export function AuthProvider({ children }) {
       subscription.unsubscribe()
     }
   }, [])
-
-  async function fetchProfile(userId) {
-    try {
-      const { data } = await supabase
-        .from('profiles').select('*').eq('id', userId).single()
-      setProfile(data ?? null)
-    } catch {
-      setProfile(null)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   async function ensureProfile(userId, email, displayName) {
     try {
@@ -93,9 +75,8 @@ export function AuthProvider({ children }) {
   async function signUp(email, password, displayName) {
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) throw error
-    if (data.session && data.user) {
-      await ensureProfile(data.user.id, email, displayName)
-    } else if (data.user) {
+    if (data.user && !data.session) {
+      // email confirmation required — store display name for later
       await supabase.auth.updateUser({ data: { display_name: displayName } })
     }
     return data

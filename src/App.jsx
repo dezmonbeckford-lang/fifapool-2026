@@ -24,16 +24,12 @@ function AdminRoute({ children }) {
   return children
 }
 
-function Inner() {
-  const { loading } = useAuth()
-
+export default function App() {
   return (
-    <BrowserRouter>
-      <Navbar />
-      <main style={{ flex: 1 }}>
-        {loading ? (
-          <div className="page-center"><div className="spinner" /></div>
-        ) : (
+    <AuthProvider>
+      <BrowserRouter>
+        <Navbar />
+        <main style={{ flex: 1 }}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
@@ -43,16 +39,8 @@ function Inner() {
             <Route path="/bracket" element={<Protected><BracketPicks /></Protected>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
           </Routes>
-        )}
-      </main>
-    </BrowserRouter>
-  )
-}
-
-export default function App() {
-  return (
-    <AuthProvider>
-      <Inner />
+        </main>
+      </BrowserRouter>
     </AuthProvider>
   )
 }
