@@ -152,3 +152,28 @@
 .match-result-done { font-size: 13px; color: var(--accent); }
 .match-result-input { display: flex; gap: 8px; align-items: center; }
 .match-result-input .input { max-width: 200px; }
+
+/* Bracket setup */
+.bracket-setup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 600px) { .bracket-setup-grid { grid-template-columns: 1fr; } }
+.bsu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px !important;
+}
+.bsu-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text2);
+  min-width: 20px;
+}
+.bsu-input { flex: 1; padding: 6px 8px !important; font-size: 0.82rem !important; }
+.bsu-vs { font-size: 0.72rem; color: var(--text2); flex-shrink: 0; }
+
+/* Leaderboard potential col */
+.potential-col { color: var(--accent); font-weight: 600; }

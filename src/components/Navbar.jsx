@@ -10,6 +10,7 @@ export default function Navbar() {
     { to: '/', label: '🏆', title: 'Home' },
     { to: '/leaderboard', label: '📊', title: 'Leaderboard' },
     ...(user ? [{ to: '/picks', label: '⚽', title: 'My Picks' }] : []),
+    ...(user ? [{ to: '/bracket', label: '🏅', title: 'Bracket' }] : []),
     ...(profile?.is_admin ? [{ to: '/admin', label: '🔧', title: 'Admin' }] : []),
   ]
 
@@ -24,6 +25,7 @@ export default function Navbar() {
         <nav className="navbar-links hide-mobile">
           <Link to="/leaderboard" className={loc.pathname === '/leaderboard' ? 'active' : ''}>Leaderboard</Link>
           {user && <Link to="/picks" className={loc.pathname === '/picks' ? 'active' : ''}>My Picks</Link>}
+          {user && <Link to="/bracket" className={loc.pathname === '/bracket' ? 'active' : ''}>Bracket</Link>}
           {profile?.is_admin && <Link to="/admin" className={loc.pathname.startsWith('/admin') ? 'active' : ''}>Admin</Link>}
         </nav>
 

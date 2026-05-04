@@ -5,6 +5,7 @@ import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Picks from './pages/Picks'
+import BracketPicks from './pages/BracketPicks'
 import Leaderboard from './pages/Leaderboard'
 import Admin from './pages/Admin'
 
@@ -39,6 +40,7 @@ function Inner() {
             <Route path="/register" element={<Register />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/picks" element={<Protected><Picks /></Protected>} />
+            <Route path="/bracket" element={<Protected><BracketPicks /></Protected>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
           </Routes>
         )}

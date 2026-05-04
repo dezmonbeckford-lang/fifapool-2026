@@ -49,7 +49,7 @@ export default function Admin() {
       </div>
 
       <div className="admin-tabs">
-        {[['settings', '⚙️ Settings'], ['groups', '🏟️ Group Results'], ['bracket', '🏆 Bracket Results']].map(([id, label]) => (
+        {[['settings', '⚙️ Settings'], ['groups', '🏟️ Group Results'], ['bracket-setup', '🔧 Bracket Setup'], ['bracket', '🏆 Bracket Results']].map(([id, label]) => (
           <button
             key={id}
             className={`admin-tab${tab === id ? ' active' : ''}`}
@@ -119,6 +119,7 @@ export default function Admin() {
       )}
 
       {tab === 'groups' && <GroupResultsTab onMsg={setMsg} />}
+      {tab === 'bracket-setup' && <BracketSetupTab onMsg={setMsg} />}
       {tab === 'bracket' && <BracketResultsTab onMsg={setMsg} />}
     </div>
   )
@@ -276,6 +277,129 @@ function GroupResultsTab({ onMsg }) {
       <button className="btn btn-primary btn-lg" onClick={handleSave} disabled={saving}>
         {saving ? 'Saving & Scoring…' : '💾 Save Results & Score All Players'}
       </button>
+    </div>
+  )
+}
+
+function BracketSetupTab({ onMsg }) {
+  const ROUND_ORDER_MAP = { R32: 0, R16: 1, QF: 2, SF: 3, THIRD: 4, FINAL: 5 }
+  const emptyR32 = Array.from({ length: 32 }, (_, i) => ({
+    _key: i,
+    team1: '', team2: '',
+    round: 'R32', match_number: i + 1, round_order: 0, is_final: false,
+  }))
+
+  const [matches, setMatches] = useState([])
+  const [rows, setRows] = useState(emptyR32)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    const { data } = await supabase
+      .from('bracket_matches')
+      .select('*')
+      .eq('round', 'R32')
+      .order('match_number')
+    if (data?.length) {
+      setMatches(data)
+      setRows(data.map((m, i) => ({ _key: i, team1: m.team1 || '', team2: m.team2 || '', round: 'R32', match_number: m.match_number, round_order: 0, is_final: false, id: m.id })))
+    }
+    setLoading(false)
+  }
+
+  function update(idx, field, val) {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r))
+  }
+
+  async function handleSave() {
+    const filled = rows.filter(r => r.team1 && r.team2)
+    if (!filled.length) { onMsg('Error: Enter at least one matchup'); return }
+    setSaving(true)
+    try {
+      const upsertRows = filled.map(r => ({
+        ...(r.id ? { id: r.id } : {}),
+        team1: r.team1, team2: r.team2,
+        round: 'R32', match_number: r.match_number,
+        round_order: 0, is_final: false,
+        result_entered: false,
+      }))
+      const { error } = await supabase
+        .from('bracket_matches')
+        .upsert(upsertRows, { onConflict: 'id' })
+      if (error) throw error
+      onMsg(`✓ ${filled.length} R32 matchups saved! Users can now make bracket picks.`)
+      load()
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleClear() {
+    if (!window.confirm('Delete ALL bracket matches? This cannot be undone.')) return
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('bracket_matches').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+      if (error) throw error
+      setRows(emptyR32)
+      setMatches([])
+      onMsg('✓ All bracket matches cleared.')
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="spinner" />
+
+  return (
+    <div className="admin-section">
+      <div className="admin-section-header">
+        <h2>Setup R32 Bracket</h2>
+        <p>Enter the 32 matchups for the Round of 32. Once saved, users can start making bracket picks.</p>
+      </div>
+
+      {matches.length > 0 && (
+        <div className="success-msg" style={{ marginBottom: 16 }}>
+          ✓ {matches.length} R32 matchups already saved. Edit below and re-save to update.
+        </div>
+      )}
+
+      <div className="bracket-setup-grid">
+        {rows.map((row, idx) => (
+          <div key={row._key} className="bsu-row card">
+            <span className="bsu-num">{idx + 1}</span>
+            <input
+              className="input bsu-input"
+              placeholder="Team 1"
+              value={row.team1}
+              onChange={e => update(idx, 'team1', e.target.value)}
+            />
+            <span className="bsu-vs">vs</span>
+            <input
+              className="input bsu-input"
+              placeholder="Team 2"
+              value={row.team2}
+              onChange={e => update(idx, 'team2', e.target.value)}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+        <button className="btn btn-primary btn-lg" onClick={handleSave} disabled={saving} style={{ flex: 1 }}>
+          {saving ? 'Saving…' : '💾 Save R32 Matchups'}
+        </button>
+        {matches.length > 0 && (
+          <button className="btn btn-outline" onClick={handleClear} disabled={saving} style={{ color: '#ef4444', borderColor: '#ef4444' }}>
+            Clear All
+          </button>
+        )}
+      </div>
     </div>
   )
 }
