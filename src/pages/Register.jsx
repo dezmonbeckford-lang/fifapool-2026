@@ -11,6 +11,7 @@ export default function Register() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [confirmSent, setConfirmSent] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -18,13 +19,36 @@ export default function Register() {
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
     setLoading(true)
     try {
-      await signUp(email, password, displayName)
-      navigate('/')
+      const data = await signUp(email, password, displayName)
+      // If session is null, email confirmation is required
+      if (data.session) {
+        navigate('/')
+      } else {
+        setConfirmSent(true)
+      }
     } catch (err) {
       setError(err.message || 'Registration failed')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (confirmSent) {
+    return (
+      <div className="page-center">
+        <div className="auth-card card" style={{ textAlign: 'center' }}>
+          <span className="auth-icon">📧</span>
+          <h1>Check your email</h1>
+          <p style={{ color: 'var(--text2)', marginTop: 8 }}>
+            We sent a confirmation link to <strong>{email}</strong>.<br />
+            Click it to activate your account, then sign in.
+          </p>
+          <Link to="/login" className="btn btn-primary btn-full" style={{ marginTop: 24 }}>
+            Go to sign in →
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
