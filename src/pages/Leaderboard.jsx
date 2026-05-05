@@ -21,12 +21,27 @@ export default function Leaderboard() {
 
   async function loadLeaderboard() {
     try {
-      const { data, error: err } = await supabase
-        .from('scores')
-        .select('*, profiles(display_name, email)')
-        .order('total_points', { ascending: false })
-      if (err) throw err
-      setEntries(data || [])
+      // Load all profiles and their scores — show everyone, even with 0 points
+      const [{ data: profiles, error: pErr }, { data: scores, error: sErr }] = await Promise.all([
+        supabase.from('profiles').select('id, display_name, email'),
+        supabase.from('scores').select('user_id, group_points, bracket_points, total_points'),
+      ])
+      if (pErr) throw pErr
+      if (sErr) throw sErr
+
+      const scoreMap = {}
+      ;(scores || []).forEach(s => { scoreMap[s.user_id] = s })
+
+      const merged = (profiles || []).map(p => ({
+        user_id: p.id,
+        profiles: { display_name: p.display_name, email: p.email },
+        group_points: scoreMap[p.id]?.group_points ?? 0,
+        bracket_points: scoreMap[p.id]?.bracket_points ?? 0,
+        total_points: scoreMap[p.id]?.total_points ?? 0,
+      }))
+
+      merged.sort((a, b) => b.total_points - a.total_points || a.profiles.display_name.localeCompare(b.profiles.display_name))
+      setEntries(merged)
     } catch (err) {
       setError('Failed to load leaderboard')
     } finally {
@@ -42,7 +57,7 @@ export default function Leaderboard() {
     <div className="leaderboard-page">
       <div className="lb-header">
         <h1>🏆 Leaderboard</h1>
-        <p>{entries.length} player{entries.length !== 1 ? 's' : ''} competing</p>
+        <p>{entries.length} player{entries.length !== 1 ? 's' : ''} in the pool</p>
       </div>
 
       {error && <div className="error-msg">{error}</div>}

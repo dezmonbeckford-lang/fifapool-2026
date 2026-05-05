@@ -128,26 +128,35 @@ export default function Picks() {
     }, 15000)
 
     try {
-      const groupRows = GROUPS.map(g => ({
-        user_id: user.id,
-        group_id: g.id,
-        winner: groupPicks[g.id]?.winner || null,
-        runner_up: groupPicks[g.id]?.runnerUp || null,
-      }))
+      // Step 1: delete existing group picks then re-insert fresh (avoids upsert conflicts)
+      const { error: delGpErr } = await supabase
+        .from('group_picks').delete().eq('user_id', user.id)
+      if (delGpErr) throw new Error(`Clear group picks: ${delGpErr.message} (${delGpErr.code})`)
 
-      // upsert group picks and clear old wildcard picks simultaneously
-      const [{ error: gpErr }, { error: delErr }] = await Promise.all([
-        supabase.from('group_picks').upsert(groupRows, { onConflict: 'user_id,group_id' }),
-        supabase.from('wildcard_picks').delete().eq('user_id', user.id),
-      ])
-      if (gpErr) throw gpErr
-      if (delErr) throw delErr
+      const groupRows = GROUPS
+        .filter(g => groupPicks[g.id]?.winner || groupPicks[g.id]?.runnerUp)
+        .map(g => ({
+          user_id: user.id,
+          group_id: g.id,
+          winner: groupPicks[g.id]?.winner || null,
+          runner_up: groupPicks[g.id]?.runnerUp || null,
+        }))
+
+      if (groupRows.length > 0) {
+        const { error: gpErr } = await supabase.from('group_picks').insert(groupRows)
+        if (gpErr) throw new Error(`Save group picks: ${gpErr.message} (${gpErr.code})`)
+      }
+
+      // Step 2: delete existing wildcard picks then re-insert
+      const { error: delWpErr } = await supabase
+        .from('wildcard_picks').delete().eq('user_id', user.id)
+      if (delWpErr) throw new Error(`Clear wildcard picks: ${delWpErr.message} (${delWpErr.code})`)
 
       if (wildcardPicks.length > 0) {
         const { error: wpErr } = await supabase
           .from('wildcard_picks')
           .insert(wildcardPicks.map(team => ({ user_id: user.id, team })))
-        if (wpErr) throw wpErr
+        if (wpErr) throw new Error(`Save wildcard picks: ${wpErr.message} (${wpErr.code})`)
       }
 
       setSaved(true)
