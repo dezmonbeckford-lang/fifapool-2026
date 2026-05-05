@@ -17,6 +17,7 @@ export default function Picks() {
   const [wildcardPicks, setWildcardPicks] = useState([])
   const [step, setStep] = useState(1) // 1 = group picks, 2 = wildcard picks
   const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -122,16 +123,14 @@ export default function Picks() {
     if (locked) return
     setError('')
     setSaving(true)
+    setSaveStatus('')
     const saveTimer = setTimeout(() => {
       setSaving(false)
-      setError('Save timed out — check your connection and try again.')
-    }, 15000)
+      setError('Server is slow to respond — try clicking Save again. It usually works on the second try.')
+    }, 30000)
 
     try {
-      // Step 1: delete existing group picks then re-insert fresh (avoids upsert conflicts)
-      const { error: delGpErr } = await supabase
-        .from('group_picks').delete().eq('user_id', user.id)
-      if (delGpErr) throw new Error(`Clear group picks: ${delGpErr.message} (${delGpErr.code})`)
+      setSaveStatus('Connecting…')
 
       const groupRows = GROUPS
         .filter(g => groupPicks[g.id]?.winner || groupPicks[g.id]?.runnerUp)
@@ -142,23 +141,27 @@ export default function Picks() {
           runner_up: groupPicks[g.id]?.runnerUp || null,
         }))
 
-      if (groupRows.length > 0) {
-        const { error: gpErr } = await supabase.from('group_picks').insert(groupRows)
-        if (gpErr) throw new Error(`Save group picks: ${gpErr.message} (${gpErr.code})`)
-      }
-
-      // Step 2: delete existing wildcard picks then re-insert
-      const { error: delWpErr } = await supabase
-        .from('wildcard_picks').delete().eq('user_id', user.id)
+      // Delete both tables simultaneously (first batch — wakes up server)
+      setSaveStatus('Clearing old picks…')
+      const [{ error: delGpErr }, { error: delWpErr }] = await Promise.all([
+        supabase.from('group_picks').delete().eq('user_id', user.id),
+        supabase.from('wildcard_picks').delete().eq('user_id', user.id),
+      ])
+      if (delGpErr) throw new Error(`Clear group picks: ${delGpErr.message} (${delGpErr.code})`)
       if (delWpErr) throw new Error(`Clear wildcard picks: ${delWpErr.message} (${delWpErr.code})`)
 
-      if (wildcardPicks.length > 0) {
-        const { error: wpErr } = await supabase
-          .from('wildcard_picks')
-          .insert(wildcardPicks.map(team => ({ user_id: user.id, team })))
-        if (wpErr) throw new Error(`Save wildcard picks: ${wpErr.message} (${wpErr.code})`)
+      // Insert both tables simultaneously (second batch — server now warm)
+      setSaveStatus('Saving…')
+      const inserts = []
+      if (groupRows.length > 0) {
+        inserts.push(supabase.from('group_picks').insert(groupRows).then(r => { if (r.error) throw new Error(`Group picks: ${r.error.message}`) }))
       }
+      if (wildcardPicks.length > 0) {
+        inserts.push(supabase.from('wildcard_picks').insert(wildcardPicks.map(team => ({ user_id: user.id, team }))).then(r => { if (r.error) throw new Error(`Wildcard picks: ${r.error.message}`) }))
+      }
+      await Promise.all(inserts)
 
+      setSaveStatus('')
       setSaved(true)
       setTimeout(() => setSaved(false), 4000)
     } catch (err) {
@@ -166,6 +169,7 @@ export default function Picks() {
     } finally {
       clearTimeout(saveTimer)
       setSaving(false)
+      setSaveStatus('')
     }
   }
 
@@ -235,7 +239,7 @@ export default function Picks() {
           <div className="step1-actions">
             {!locked && (
               <button className="btn btn-outline btn-lg" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : '💾 Save Progress'}
+                {saving ? (saveStatus || 'Saving…') : '💾 Save Progress'}
               </button>
             )}
             {allGroupsDone && (
@@ -318,7 +322,7 @@ export default function Picks() {
                 onClick={handleSave}
                 disabled={saving}
               >
-                {saving ? 'Saving…' : '💾 Save All Picks'}
+                {saving ? (saveStatus || 'Saving…') : '💾 Save All Picks'}
               </button>
             )}
           </div>
