@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext({
   user: null, profile: null, loading: true,
-  signUp: async () => {}, signIn: async () => {}, signOut: async () => {},
+  signUp: async () => {}, signIn: async () => {}, signOut: async () => {}, refreshProfile: async () => {},
 })
 
 export function AuthProvider({ children }) {
@@ -92,8 +92,16 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
+  async function refreshProfile() {
+    if (!user) return
+    try {
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      setProfile(data ?? null)
+    } catch { /* non-fatal */ }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signUp, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )
