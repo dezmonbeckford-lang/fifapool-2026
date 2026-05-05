@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
+import { saveWithRetry } from '../lib/saveWithRetry'
 import './Auth.css'
 
 export default function Profile() {
   const { user, profile, refreshProfile } = useAuth()
   const [displayName, setDisplayName] = useState(profile?.display_name || '')
   const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
@@ -16,30 +18,31 @@ export default function Profile() {
     if (!name) { setError('Display name cannot be empty'); return }
     if (name.length > 30) { setError('Max 30 characters'); return }
     setError('')
+    setSaveStatus('')
     setSaving(true)
 
-    const timer = setTimeout(() => {
-      setSaving(false)
-      setError('Server is slow — try again.')
-    }, 20000)
-
     try {
-      const { error: err } = await supabase
-        .from('profiles')
-        .update({ display_name: name })
-        .eq('id', user.id)
-      if (err) throw err
+      await saveWithRetry(
+        async (signal) => {
+          const { error: err } = await supabase
+            .from('profiles')
+            .update({ display_name: name })
+            .eq('id', user.id)
+            .abortSignal(signal)
+          if (err) throw err
+        },
+        { onRetry: () => setSaveStatus('Server warming up, retrying…') }
+      )
 
-      // Refresh the context so the navbar and everywhere else updates immediately
       await refreshProfile()
-
+      setSaveStatus('')
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
       setError(err.message || 'Failed to update. Try again.')
     } finally {
-      clearTimeout(timer)
       setSaving(false)
+      setSaveStatus('')
     }
   }
 
@@ -77,7 +80,7 @@ export default function Profile() {
             className="btn btn-primary btn-full btn-lg"
             disabled={saving || displayName.trim() === profile?.display_name}
           >
-            {saving ? 'Updating…' : 'Update name'}
+            {saving ? (saveStatus || 'Updating…') : 'Update name'}
           </button>
         </form>
       </div>

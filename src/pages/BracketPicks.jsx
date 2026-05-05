@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { TEAM_FLAGS } from '../data/groups'
 import { BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
+import { saveWithRetry } from '../lib/saveWithRetry'
 import './BracketPicks.css'
 
 const ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
@@ -17,6 +18,7 @@ export default function BracketPicks() {
   const [now, setNow]                 = useState(new Date())
   const [activeRound, setActiveRound] = useState('R32')
   const [saving, setSaving]           = useState(false)
+  const [saveStatus, setSaveStatus]   = useState('')
   const [saved, setSaved]             = useState(false)
   const [error, setError]             = useState('')
   const [loading, setLoading]         = useState(true)
@@ -99,28 +101,41 @@ export default function BracketPicks() {
 
   async function handleSave() {
     if (!user || locked || !isOpen) return
-    setSaving(true); setError('')
+    setSaving(true)
+    setSaveStatus('Saving…')
+    setError('')
+
+    const rows = Object.entries(myPicks)
+      .filter(([, v]) => v.picked_winner)
+      .map(([matchId, v]) => ({
+        user_id: user.id,
+        match_id: matchId,
+        picked_winner: v.picked_winner,
+        tiebreaker_score1: v.tb1 ?? null,
+        tiebreaker_score2: v.tb2 ?? null,
+      }))
+
     try {
-      const rows = Object.entries(myPicks)
-        .filter(([, v]) => v.picked_winner)
-        .map(([matchId, v]) => ({
-          user_id: user.id,
-          match_id: matchId,
-          picked_winner: v.picked_winner,
-          tiebreaker_score1: v.tb1 ?? null,
-          tiebreaker_score2: v.tb2 ?? null,
-        }))
       if (rows.length > 0) {
-        const { error: err } = await supabase
-          .from('bracket_picks')
-          .upsert(rows, { onConflict: 'user_id,match_id' })
-        if (err) throw err
+        await saveWithRetry(
+          async (signal) => {
+            const { error: err } = await supabase
+              .from('bracket_picks')
+              .upsert(rows, { onConflict: 'user_id,match_id' })
+              .abortSignal(signal)
+            if (err) throw err
+          },
+          { onRetry: () => setSaveStatus('Server warming up, retrying…') }
+        )
       }
-      setSaved(true); setTimeout(() => setSaved(false), 3000)
+      setSaveStatus('')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
     } catch (e) {
       setError(e.message || 'Failed to save')
     } finally {
       setSaving(false)
+      setSaveStatus('')
     }
   }
 
@@ -299,7 +314,7 @@ export default function BracketPicks() {
         <div className="bracket-save-bar">
           <div className="bsb-progress">{pickedCount} of {totalMatches} matches picked</div>
           <button className="btn btn-primary btn-lg btn-full" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : '💾 Save Bracket Picks'}
+            {saving ? (saveStatus || 'Saving…') : '💾 Save Bracket Picks'}
           </button>
         </div>
       )}

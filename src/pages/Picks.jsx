@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
+import { saveWithRetry } from '../lib/saveWithRetry'
 import './Picks.css'
 
 export default function Picks() {
@@ -123,43 +124,46 @@ export default function Picks() {
     if (locked) return
     setError('')
     setSaving(true)
-    setSaveStatus('')
-    const saveTimer = setTimeout(() => {
-      setSaving(false)
-      setError('Server is slow to respond — try clicking Save again. It usually works on the second try.')
-    }, 30000)
+    setSaveStatus('Saving…')
+
+    const groupRows = GROUPS
+      .filter(g => groupPicks[g.id]?.winner || groupPicks[g.id]?.runnerUp)
+      .map(g => ({
+        user_id: user.id,
+        group_id: g.id,
+        winner: groupPicks[g.id]?.winner || null,
+        runner_up: groupPicks[g.id]?.runnerUp || null,
+      }))
 
     try {
-      setSaveStatus('Connecting…')
+      await saveWithRetry(
+        async (signal) => {
+          const [{ error: delGpErr }, { error: delWpErr }] = await Promise.all([
+            supabase.from('group_picks').delete().eq('user_id', user.id).abortSignal(signal),
+            supabase.from('wildcard_picks').delete().eq('user_id', user.id).abortSignal(signal),
+          ])
+          if (delGpErr) throw new Error(`Clear group picks: ${delGpErr.message}`)
+          if (delWpErr) throw new Error(`Clear wildcard picks: ${delWpErr.message}`)
 
-      const groupRows = GROUPS
-        .filter(g => groupPicks[g.id]?.winner || groupPicks[g.id]?.runnerUp)
-        .map(g => ({
-          user_id: user.id,
-          group_id: g.id,
-          winner: groupPicks[g.id]?.winner || null,
-          runner_up: groupPicks[g.id]?.runnerUp || null,
-        }))
-
-      // Delete both tables simultaneously (first batch — wakes up server)
-      setSaveStatus('Clearing old picks…')
-      const [{ error: delGpErr }, { error: delWpErr }] = await Promise.all([
-        supabase.from('group_picks').delete().eq('user_id', user.id),
-        supabase.from('wildcard_picks').delete().eq('user_id', user.id),
-      ])
-      if (delGpErr) throw new Error(`Clear group picks: ${delGpErr.message} (${delGpErr.code})`)
-      if (delWpErr) throw new Error(`Clear wildcard picks: ${delWpErr.message} (${delWpErr.code})`)
-
-      // Insert both tables simultaneously (second batch — server now warm)
-      setSaveStatus('Saving…')
-      const inserts = []
-      if (groupRows.length > 0) {
-        inserts.push(supabase.from('group_picks').insert(groupRows).then(r => { if (r.error) throw new Error(`Group picks: ${r.error.message}`) }))
-      }
-      if (wildcardPicks.length > 0) {
-        inserts.push(supabase.from('wildcard_picks').insert(wildcardPicks.map(team => ({ user_id: user.id, team }))).then(r => { if (r.error) throw new Error(`Wildcard picks: ${r.error.message}`) }))
-      }
-      await Promise.all(inserts)
+          const inserts = []
+          if (groupRows.length > 0) {
+            inserts.push(
+              supabase.from('group_picks').insert(groupRows).abortSignal(signal)
+                .then(r => { if (r.error) throw new Error(`Group picks: ${r.error.message}`) })
+            )
+          }
+          if (wildcardPicks.length > 0) {
+            inserts.push(
+              supabase.from('wildcard_picks')
+                .insert(wildcardPicks.map(team => ({ user_id: user.id, team })))
+                .abortSignal(signal)
+                .then(r => { if (r.error) throw new Error(`Wildcard picks: ${r.error.message}`) })
+            )
+          }
+          await Promise.all(inserts)
+        },
+        { onRetry: () => setSaveStatus('Server warming up, retrying…') }
+      )
 
       setSaveStatus('')
       setSaved(true)
@@ -167,7 +171,6 @@ export default function Picks() {
     } catch (err) {
       setError(err.message || 'Failed to save picks. Try again.')
     } finally {
-      clearTimeout(saveTimer)
       setSaving(false)
       setSaveStatus('')
     }

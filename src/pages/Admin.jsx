@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS } from '../data/groups'
 import { ROUND_LABELS } from '../data/scoring'
+import { saveWithRetry } from '../lib/saveWithRetry'
 import './Admin.css'
 
 export default function Admin() {
@@ -27,20 +28,35 @@ export default function Admin() {
   async function saveSettings() {
     setSaving(true)
     const payload = { id: 1, ...settings }
-    // Convert local datetime string to ISO for storage
     if (payload.bracket_unlock_at && typeof payload.bracket_unlock_at === 'string' && !payload.bracket_unlock_at.includes('Z')) {
       payload.bracket_unlock_at = new Date(payload.bracket_unlock_at).toISOString()
     }
-    const { error } = await supabase.from('settings').upsert(payload)
-    setMsg(error ? `Error: ${error.message}` : '✓ Settings saved')
-    setSaving(false)
+    try {
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase.from('settings').upsert(payload).abortSignal(signal)
+        if (error) throw error
+      })
+      setMsg('✓ Settings saved')
+    } catch (err) {
+      setMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function recalcScores() {
     setSaving(true)
-    const { error } = await supabase.rpc('calculate_group_scores')
-    setMsg(error ? `Error: ${error.message}` : '✓ All scores recalculated!')
-    setSaving(false)
+    try {
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase.rpc('calculate_group_scores').abortSignal(signal)
+        if (error) throw error
+      })
+      setMsg('✓ All scores recalculated!')
+    } catch (err) {
+      setMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Format stored UTC timestamp to datetime-local string
@@ -207,24 +223,27 @@ function GroupResultsTab({ onMsg }) {
         .filter(([, v]) => v.winner && v.runnerUp)
         .map(([groupId, v]) => ({ group_id: groupId, winner: v.winner, runner_up: v.runnerUp }))
 
-      const [grRes, waDelRes] = await Promise.all([
-        rows.length > 0
-          ? supabase.from('group_results').upsert(rows, { onConflict: 'group_id' })
-          : Promise.resolve({ error: null }),
-        supabase.from('wildcard_advancers').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-      ])
-      if (grRes.error) throw grRes.error
-      if (waDelRes.error) throw waDelRes.error
+      await saveWithRetry(async (signal) => {
+        const [grRes, waDelRes] = await Promise.all([
+          rows.length > 0
+            ? supabase.from('group_results').upsert(rows, { onConflict: 'group_id' }).abortSignal(signal)
+            : Promise.resolve({ error: null }),
+          supabase.from('wildcard_advancers').delete().neq('id', '00000000-0000-0000-0000-000000000000').abortSignal(signal),
+        ])
+        if (grRes.error) throw grRes.error
+        if (waDelRes.error) throw waDelRes.error
 
-      if (wildcardAdvancers.length > 0) {
-        const { error: waErr } = await supabase
-          .from('wildcard_advancers')
-          .insert(wildcardAdvancers.map(team => ({ team })))
-        if (waErr) throw waErr
-      }
+        if (wildcardAdvancers.length > 0) {
+          const { error: waErr } = await supabase
+            .from('wildcard_advancers')
+            .insert(wildcardAdvancers.map(team => ({ team })))
+            .abortSignal(signal)
+          if (waErr) throw waErr
+        }
 
-      const { error: scoreErr } = await supabase.rpc('calculate_group_scores')
-      if (scoreErr) throw scoreErr
+        const { error: scoreErr } = await supabase.rpc('calculate_group_scores').abortSignal(signal)
+        if (scoreErr) throw scoreErr
+      })
 
       onMsg(`✓ ${rows.length} group results saved, scores updated!`)
       loadExisting()
@@ -334,8 +353,10 @@ function BracketSetupTab({ onMsg }) {
     if (!window.confirm('This will create the full bracket structure (R32 through Final) and CLEAR any existing bracket picks. Continue?')) return
     setSaving(true)
     try {
-      const { error } = await supabase.rpc('generate_bracket')
-      if (error) throw error
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase.rpc('generate_bracket').abortSignal(signal)
+        if (error) throw error
+      })
       onMsg('✓ Bracket structure created! Now fill in the 16 R32 matchups.')
       loadMatches()
     } catch (err) {
@@ -350,15 +371,17 @@ function BracketSetupTab({ onMsg }) {
     if (!filled.length) { onMsg('Error: Fill in at least one matchup first'); return }
     setSaving(true)
     try {
-      for (const m of filled) {
-        if (m.id) {
-          const { error } = await supabase
-            .from('bracket_matches')
-            .update({ team1: m.team1, team2: m.team2 })
-            .eq('id', m.id)
-          if (error) throw error
-        }
-      }
+      await saveWithRetry(async (signal) => {
+        await Promise.all(
+          filled.filter(m => m.id).map(m =>
+            supabase.from('bracket_matches')
+              .update({ team1: m.team1, team2: m.team2 })
+              .eq('id', m.id)
+              .abortSignal(signal)
+              .then(r => { if (r.error) throw r.error })
+          )
+        )
+      })
       onMsg(`✓ ${filled.length} R32 matchups saved! Users can now make bracket picks.`)
       loadMatches()
     } catch (err) {
@@ -446,13 +469,16 @@ function BracketResultsTab({ onMsg }) {
   async function saveResult(matchId, winner) {
     setSaving(matchId)
     try {
-      const { error } = await supabase
-        .from('bracket_matches')
-        .update({ actual_winner: winner, result_entered: true })
-        .eq('id', matchId)
-      if (error) throw error
-      const { error: scoreErr } = await supabase.rpc('score_bracket_match', { match_id: matchId })
-      if (scoreErr) throw scoreErr
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase
+          .from('bracket_matches')
+          .update({ actual_winner: winner, result_entered: true })
+          .eq('id', matchId)
+          .abortSignal(signal)
+        if (error) throw error
+        const { error: scoreErr } = await supabase.rpc('score_bracket_match', { match_id: matchId }).abortSignal(signal)
+        if (scoreErr) throw scoreErr
+      })
       onMsg('✓ Result saved and scores updated!')
       loadMatches()
     } catch (err) {
@@ -566,10 +592,16 @@ function PlayersTab({ onMsg }) {
 
   async function toggleAdmin(userId, currentVal) {
     if (!window.confirm(`${currentVal ? 'Remove' : 'Grant'} admin access for this user?`)) return
-    const { error } = await supabase.from('profiles').update({ is_admin: !currentVal }).eq('id', userId)
-    if (error) { onMsg(`Error: ${error.message}`); return }
-    onMsg(`✓ Admin access ${currentVal ? 'removed' : 'granted'}.`)
-    loadPlayers()
+    try {
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase.from('profiles').update({ is_admin: !currentVal }).eq('id', userId).abortSignal(signal)
+        if (error) throw error
+      })
+      onMsg(`✓ Admin access ${currentVal ? 'removed' : 'granted'}.`)
+      loadPlayers()
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    }
   }
 
   if (loading) return <div className="spinner" />
