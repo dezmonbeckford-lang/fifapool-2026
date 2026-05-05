@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import Profile from './pages/Profile'
 import Picks from './pages/Picks'
 import BracketPicks from './pages/BracketPicks'
 import Leaderboard from './pages/Leaderboard'
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/profile" element={<Protected><Profile /></Protected>} />
             <Route path="/picks" element={<Protected><Picks /></Protected>} />
             <Route path="/bracket" element={<Protected><BracketPicks /></Protected>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
