@@ -114,7 +114,7 @@
 .home-cta h4 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
 .home-cta p { font-size: 13px; color: var(--text2); line-height: 1.4; }
 
-/* Status pills */
+/* Status pills — dark-first (whole app is dark) */
 .status-pills {
   display: flex;
   flex-wrap: wrap;
@@ -125,17 +125,13 @@
 .status-pill {
   font-size: 0.78rem;
   font-weight: 700;
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 20px;
   border: 1.5px solid;
 }
-.status-pill.open { color: #16a34a; border-color: #16a34a; background: #dcfce7; }
-.status-pill.locked { color: #b45309; border-color: #b45309; background: #fef3c7; }
-.status-pill.neutral { color: var(--text2); border-color: var(--border); background: var(--surface); }
-@media (prefers-color-scheme: dark) {
-  .status-pill.open { background: #052e16; color: #86efac; border-color: #166534; }
-  .status-pill.locked { background: #451a03; color: #fcd34d; border-color: #92400e; }
-}
+.status-pill.open    { color: #86efac; border-color: #166534; background: rgba(22,101,52,0.25); }
+.status-pill.locked  { color: #fcd34d; border-color: #92400e; background: rgba(69,26,3,0.5); }
+.status-pill.neutral { color: var(--text2); border-color: var(--border); background: var(--card); }
 
 /* Mini leaderboard */
 .home-leaders {

@@ -2,7 +2,8 @@
 .bracket-page {
   max-width: 680px;
   margin: 0 auto;
-  padding: 16px 16px 120px;
+  /* extra bottom padding because the fixed save-bar sits above the mobile nav */
+  padding: 16px 16px 160px;
 }
 
 /* Points banner */
@@ -10,7 +11,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px 20px;
@@ -24,7 +25,7 @@
 .pts-val {
   font-size: 1.8rem;
   font-weight: 800;
-  color: var(--text1);
+  color: var(--text);
   line-height: 1;
 }
 .pts-label {
@@ -35,7 +36,7 @@
   letter-spacing: 0.04em;
 }
 .pts-item.potential .pts-val { color: var(--accent); }
-.pts-item.max .pts-val { color: var(--success, #22c55e); }
+.pts-item.max .pts-val { color: var(--success); }
 .pts-sep {
   font-size: 1.4rem;
   color: var(--text2);
@@ -43,11 +44,11 @@
   padding: 0 4px;
 }
 
-/* Banners */
+/* Banners — dark-first since the whole app is dark */
 .locked-banner {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fcd34d;
+  background: rgba(245,158,11,0.1);
+  color: #fcd34d;
+  border: 1px solid rgba(245,158,11,0.3);
   border-radius: 10px;
   padding: 10px 16px;
   font-size: 0.9rem;
@@ -55,11 +56,8 @@
   text-align: center;
   margin-bottom: 12px;
 }
-@media (prefers-color-scheme: dark) {
-  .locked-banner { background: #451a03; color: #fcd34d; border-color: #92400e; }
-}
 
-/* Round tabs */
+/* Round tabs — horizontal scroll on mobile */
 .round-tabs {
   display: flex;
   gap: 6px;
@@ -67,36 +65,45 @@
   padding-bottom: 4px;
   margin-bottom: 16px;
   scrollbar-width: none;
+  /* scroll-snap for satisfying swipe */
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
 }
 .round-tabs::-webkit-scrollbar { display: none; }
+
 .round-tab {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 8px 12px;
+  /* min 44px height for touch */
+  padding: 10px 14px;
+  min-height: 44px;
   border-radius: 10px;
   border: 1.5px solid var(--border);
-  background: var(--surface);
+  background: var(--card);
   cursor: pointer;
   white-space: nowrap;
   font-size: 0.75rem;
   color: var(--text2);
   transition: all .15s;
   flex-shrink: 0;
+  scroll-snap-align: start;
+  touch-action: manipulation;
 }
-.round-tab:hover { border-color: var(--accent); color: var(--text1); }
+.round-tab:hover  { border-color: var(--accent); color: var(--text); }
+.round-tab:active { transform: scale(0.95); }
 .round-tab.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
 }
 .round-tab.done:not(.active) {
-  border-color: var(--success, #22c55e);
-  color: var(--success, #22c55e);
+  border-color: var(--success);
+  color: var(--success);
 }
 .rt-label { font-weight: 700; font-size: 0.8rem; }
-.rt-count { font-size: 0.68rem; opacity: .8; }
+.rt-count  { font-size: 0.68rem; opacity: .8; }
 
 /* Match cards */
 .bracket-matches {
@@ -109,13 +116,10 @@
   padding: 14px 16px;
   border-radius: 14px;
   border: 1.5px solid var(--border);
+  background: var(--card);
 }
-.bm-card.correct { border-color: var(--success, #22c55e); background: #f0fdf4; }
-.bm-card.wrong   { border-color: #ef4444; background: #fef2f2; }
-@media (prefers-color-scheme: dark) {
-  .bm-card.correct { background: #052e16; }
-  .bm-card.wrong   { background: #450a0a; }
-}
+.bm-card.correct { border-color: var(--success); background: rgba(34,197,94,0.06); }
+.bm-card.wrong   { border-color: var(--danger);  background: rgba(239,68,68,0.06); }
 
 .bm-header {
   display: flex;
@@ -127,7 +131,7 @@
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: rgba(16,185,129,0.12);
   padding: 3px 8px;
   border-radius: 6px;
 }
@@ -137,12 +141,8 @@
   padding: 3px 8px;
   border-radius: 6px;
 }
-.bm-result-badge.correct { background: #dcfce7; color: #166534; }
-.bm-result-badge.wrong   { background: #fee2e2; color: #991b1b; }
-@media (prefers-color-scheme: dark) {
-  .bm-result-badge.correct { background: #14532d; color: #86efac; }
-  .bm-result-badge.wrong   { background: #7f1d1d; color: #fca5a5; }
-}
+.bm-result-badge.correct { background: rgba(34,197,94,0.15);  color: var(--success); }
+.bm-result-badge.wrong   { background: rgba(239,68,68,0.15);  color: var(--danger); }
 
 .bm-teams {
   display: flex;
@@ -158,42 +158,43 @@
   flex-shrink: 0;
 }
 
-/* Team pick button */
+/* Team pick button — 44px min height for reliable thumb tapping */
 .tpb {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px;
+  min-height: 44px;
   border-radius: 10px;
   border: 1.5px solid var(--border);
-  background: var(--surface);
+  background: var(--bg3);
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text1);
+  color: var(--text);
   transition: all .15s;
   text-align: left;
+  touch-action: manipulation;
 }
-.tpb:not(:disabled):hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.tpb:not(:disabled):hover  { border-color: var(--accent); background: rgba(16,185,129,0.08); }
+.tpb:not(:disabled):active { transform: scale(0.97); }
 .tpb.picked {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  background: rgba(16,185,129,0.15);
   color: var(--accent);
 }
 .tpb.winner {
-  border-color: var(--success, #22c55e);
-  background: #dcfce7;
-  color: #166534;
+  border-color: var(--success);
+  background: rgba(34,197,94,0.12);
+  color: var(--success);
 }
-.tpb.loser { opacity: 0.45; text-decoration: line-through; }
-.tpb.elim  { opacity: 0.35; cursor: not-allowed; }
+.tpb.loser { opacity: 0.4; text-decoration: line-through; }
+.tpb.elim  { opacity: 0.3; cursor: not-allowed; }
 .tpb:disabled { cursor: default; }
-@media (prefers-color-scheme: dark) {
-  .tpb.winner { background: #14532d; color: #86efac; }
-}
-.tpb-flag { font-size: 1.2rem; flex-shrink: 0; }
-.tpb-name { flex: 1; font-size: 0.85rem; }
+
+.tpb-flag  { font-size: 1.3rem; flex-shrink: 0; }
+.tpb-name  { flex: 1; font-size: 0.85rem; }
 .tpb-crown { flex-shrink: 0; }
 
 .tpb-tbd {
@@ -201,7 +202,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px;
+  min-height: 44px;
   border-radius: 10px;
   border: 1.5px dashed var(--border);
   background: transparent;
@@ -218,7 +220,7 @@
 .tb-label {
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--text1);
+  color: var(--text);
   margin-bottom: 10px;
 }
 .tb-inputs {
@@ -233,14 +235,14 @@
   flex: 1;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--text1);
+  color: var(--text);
 }
 .tb-team:last-child { flex-direction: row-reverse; }
 .tb-input {
-  width: 56px !important;
+  width: 60px !important;
   text-align: center;
-  padding: 6px 4px !important;
-  font-size: 1.1rem !important;
+  padding: 8px 4px !important;
+  font-size: 1.2rem !important;
   font-weight: 700;
 }
 .tb-dash {
@@ -255,18 +257,26 @@
   font-style: italic;
 }
 
-/* Save bar */
+/* Save bar — sits above the mobile bottom nav, accounts for safe area */
 .bracket-save-bar {
   position: fixed;
-  bottom: 68px;
-  left: 0; right: 0;
-  background: var(--bg);
+  /* on mobile: above the 64px nav + safe area; on desktop: just at bottom */
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  right: 0;
+  background: rgba(10,14,26,0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   z-index: 50;
+}
+/* On desktop (no mobile nav) */
+@media (min-width: 601px) {
+  .bracket-save-bar { bottom: 0; }
 }
 .bsb-progress {
   font-size: 0.82rem;
@@ -279,7 +289,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
+  min-height: 60dvh;
   padding: 24px 16px;
 }
 .bls-card {
@@ -290,7 +300,7 @@
 }
 .bls-icon { font-size: 3rem; margin-bottom: 12px; }
 .bls-card h2 { margin-bottom: 8px; }
-.bls-card p { color: var(--text2); margin-bottom: 20px; font-size: 0.95rem; }
+.bls-card p  { color: var(--text2); margin-bottom: 20px; font-size: 0.95rem; }
 .bls-sub { font-size: 0.8rem !important; margin-top: 16px !important; }
 
 .countdown {
@@ -315,3 +325,13 @@
 }
 .cd-unit label { font-size: 0.68rem; color: var(--text2); text-transform: uppercase; margin-top: 4px; }
 .cd-sep { font-size: 1.8rem; font-weight: 300; color: var(--text2); padding-bottom: 12px; }
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  .pts-val { font-size: 1.5rem; }
+  .cd-unit { min-width: 44px; }
+  .cd-unit span { font-size: 1.8rem; }
+  .bm-card { padding: 12px; }
+  .tpb { padding: 10px; font-size: 0.8rem; }
+  .tpb-flag { font-size: 1.1rem; }
+}

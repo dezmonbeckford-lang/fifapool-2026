@@ -75,17 +75,20 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: var(--bg2);
+  background: rgba(17, 24, 39, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
   z-index: 200;
-  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+  /* top padding + bottom padding grows with safe area so icons stay above home bar */
+  padding: 4px 0 calc(4px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (max-width: 600px) {
   .mobile-nav { display: flex; }
   .navbar-inner { height: 52px; }
-
-  body { padding-bottom: 70px; }
+  /* body bottom padding = nav height + safe area so nothing hides behind it */
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 }
 
 .mobile-nav-item {
@@ -93,11 +96,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 4px;
+  /* 44px min height = Apple HIG minimum tap target */
+  min-height: 44px;
+  padding: 4px 2px;
   color: var(--text2);
   transition: color 0.15s;
+  touch-action: manipulation;
 }
 .mobile-nav-item.active { color: var(--accent); }
-.mobile-nav-icon { font-size: 20px; line-height: 1; }
-.mobile-nav-label { font-size: 10px; font-weight: 500; }
+.mobile-nav-item:active { opacity: 0.7; }
+.mobile-nav-icon { font-size: 22px; line-height: 1; }
+.mobile-nav-label { font-size: 10px; font-weight: 600; letter-spacing: 0.2px; }

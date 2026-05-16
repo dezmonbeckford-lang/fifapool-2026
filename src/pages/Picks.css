@@ -170,18 +170,22 @@
 
 .team-btns { display: flex; gap: 4px; }
 .pick-btn {
-  padding: 3px 9px;
-  border-radius: 4px;
-  font-size: 11px;
+  /* minimum 44×44 tap target so thumbs can hit reliably */
+  padding: 8px 12px;
+  min-height: 36px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 700;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text2);
   transition: all 0.12s;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .pick-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .pick-btn:not(:disabled):not(.active):hover { border-color: var(--text); color: var(--text); }
+.pick-btn:not(:disabled):active { transform: scale(0.94); }
 .winner-btn.active { background: var(--gold); border-color: var(--gold); color: #000; }
 .runner-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
@@ -333,4 +337,15 @@
   .step-btn { padding: 12px 10px; font-size: 13px; gap: 6px; }
   .step1-actions, .step2-actions { flex-direction: column; }
   .step1-actions .btn, .step2-actions .btn { width: 100%; }
+
+  /* Bigger team rows — easier to read, better spacing for thumb taps */
+  .team-row { padding: 8px 6px; }
+  .team-flag { font-size: 20px; }
+  .team-name { font-size: 14px; }
+
+  /* Wildcard team buttons — taller for easier tapping */
+  .wildcard-team { padding: 10px 12px; font-size: 14px; min-height: 44px; }
+
+  /* Widen group cards slightly */
+  .group-card { padding: 14px 12px; }
 }

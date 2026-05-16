@@ -3,18 +3,23 @@
   --bg2: #111827;
   --bg3: #1f2937;
   --card: #1a2235;
+  --surface: #1a2235;   /* alias — some component CSS uses this */
   --border: #2d3748;
   --accent: #10b981;
   --accent2: #059669;
+  --success: #22c55e;   /* bracket correct-pick green */
   --gold: #f59e0b;
   --silver: #9ca3af;
   --bronze: #cd7f32;
   --text: #f1f5f9;
+  --text1: #f1f5f9;     /* alias — some component CSS uses this */
   --text2: #94a3b8;
   --danger: #ef4444;
   --warning: #f59e0b;
   --radius: 12px;
   --radius-sm: 8px;
+  /* Safe-area helpers */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 * {
@@ -23,24 +28,42 @@
   padding: 0;
 }
 
-html, body {
+html {
+  /* Smooth scrolling for in-page navigation */
+  scroll-behavior: smooth;
+  /* Prevent over-scroll bounce on iOS (body level) */
+  height: 100%;
+}
+
+body {
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  min-height: 100vh;
+  min-height: 100%;
   -webkit-tap-highlight-color: transparent;
+  /* Prevent iOS rubber-band pull-to-refresh (content managed inside) */
+  overscroll-behavior-y: contain;
+  /* Prevent layout shift caused by scrollbar appearing */
+  scrollbar-gutter: stable;
 }
 
 #root {
-  min-height: 100vh;
+  min-height: 100dvh;   /* dvh = dynamic viewport height, handles iOS browser chrome */
   display: flex;
   flex-direction: column;
 }
 
+/* ── Interactive element resets ───────────────────────── */
 a { color: inherit; text-decoration: none; }
 
-button {
+/* touch-action: manipulation removes the 300 ms tap delay on iOS/Android
+   without disabling pinch-zoom, which user-scalable=no would */
+button, a, label {
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+button {
   border: none;
   outline: none;
   font-family: inherit;
@@ -49,18 +72,35 @@ button {
 input, select, textarea {
   font-family: inherit;
   outline: none;
+  touch-action: manipulation;
+  /* 16px minimum prevents iOS Safari from auto-zooming on focus */
+  font-size: 16px;
 }
 
+/* For select on iOS — remove default appearance that ignores font-size */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px !important;
+}
+
+/* ── Utility buttons ───────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 20px;
+  padding: 12px 20px;
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   transition: all 0.15s;
+  touch-action: manipulation;
+  /* Enforce minimum tap target */
+  min-height: 44px;
 }
 
 .btn-primary {
@@ -68,6 +108,7 @@ input, select, textarea {
   color: #fff;
 }
 .btn-primary:hover { background: var(--accent2); }
+.btn-primary:active { transform: scale(0.98); }
 
 .btn-outline {
   background: transparent;
@@ -75,21 +116,24 @@ input, select, textarea {
   color: var(--text);
 }
 .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.btn-outline:active { transform: scale(0.98); }
 
 .btn-danger {
   background: var(--danger);
   color: #fff;
 }
 
-.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-sm { padding: 8px 14px; font-size: 13px; min-height: 36px; }
 .btn-lg { padding: 14px 28px; font-size: 16px; }
 .btn-full { width: 100%; }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none !important;
 }
 
+/* ── Card ─────────────────────────────────────────────── */
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -97,18 +141,25 @@ input, select, textarea {
   padding: 16px;
 }
 
+/* ── Input ────────────────────────────────────────────── */
 .input {
   width: 100%;
   background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
-  padding: 10px 14px;
-  font-size: 15px;
+  padding: 12px 14px;
+  font-size: 16px;    /* 16px prevents iOS zoom on focus */
   transition: border-color 0.15s;
 }
 .input:focus { border-color: var(--accent); }
 .input::placeholder { color: var(--text2); }
+
+/* Number inputs: hide spinners (keep for tiebreaker) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}
 
 .label {
   display: block;
@@ -118,6 +169,7 @@ input, select, textarea {
   margin-bottom: 6px;
 }
 
+/* ── Badges ───────────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -127,11 +179,12 @@ input, select, textarea {
   font-weight: 700;
   letter-spacing: 0.5px;
 }
-.badge-green { background: rgba(16,185,129,0.15); color: var(--accent); }
-.badge-yellow { background: rgba(245,158,11,0.15); color: var(--gold); }
-.badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
-.badge-gray { background: rgba(148,163,184,0.12); color: var(--text2); }
+.badge-green  { background: rgba(16,185,129,0.15); color: var(--accent); }
+.badge-yellow { background: rgba(245,158,11,0.15);  color: var(--gold); }
+.badge-red    { background: rgba(239,68,68,0.15);   color: var(--danger); }
+.badge-gray   { background: rgba(148,163,184,0.12); color: var(--text2); }
 
+/* ── Spinner ──────────────────────────────────────────── */
 .spinner {
   width: 36px; height: 36px;
   border: 3px solid var(--border);
@@ -146,10 +199,11 @@ input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 80vh;
+  min-height: 80dvh;
   padding: 24px;
 }
 
+/* ── Alerts ───────────────────────────────────────────── */
 .error-msg {
   background: rgba(239,68,68,0.1);
   border: 1px solid rgba(239,68,68,0.3);
@@ -168,12 +222,14 @@ input, select, textarea {
   font-size: 14px;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* ── Scrollbar (desktop only) ─────────────────────────── */
+@media (pointer: fine) {
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+}
 
-/* Responsive */
+/* ── Responsive utilities ─────────────────────────────── */
 @media (max-width: 600px) {
   .hide-mobile { display: none !important; }
 }
