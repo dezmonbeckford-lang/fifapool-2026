@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import './Leaderboard.css'
 
 export default function Leaderboard() {
   const { user } = useAuth()
-  const [entries, setEntries] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [entries, setEntries]   = useState([])
+  const [settings, setSettings] = useState(null)
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState('')
 
   useEffect(() => {
     loadLeaderboard()
@@ -21,10 +23,11 @@ export default function Leaderboard() {
 
   async function loadLeaderboard() {
     try {
-      // Load all profiles and their scores — show everyone, even with 0 points
-      const [{ data: profiles, error: pErr }, { data: scores, error: sErr }] = await Promise.all([
+      // Load all profiles, scores, and settings in parallel
+      const [{ data: profiles, error: pErr }, { data: scores, error: sErr }, { data: settingsData }] = await Promise.all([
         supabase.from('profiles').select('id, display_name, email'),
         supabase.from('scores').select('user_id, group_points, bracket_points, total_points'),
+        supabase.from('settings').select('group_picks_locked').single(),
       ])
       if (pErr) throw pErr
       if (sErr) throw sErr
@@ -42,6 +45,7 @@ export default function Leaderboard() {
 
       merged.sort((a, b) => b.total_points - a.total_points || a.profiles.display_name.localeCompare(b.profiles.display_name))
       setEntries(merged)
+      setSettings(settingsData)
     } catch (err) {
       setError('Failed to load leaderboard')
     } finally {
@@ -77,10 +81,10 @@ export default function Leaderboard() {
                 return (
                   <div key={entry.user_id} className={`podium-slot rank-${rank}`}>
                     <div className="podium-medal">{medals[rank - 1]}</div>
-                    <div className="podium-name">
+                    <Link to={`/player/${entry.user_id}`} className="podium-name podium-link">
                       {entry.profiles?.display_name || 'Player'}
                       {entry.user_id === user?.id ? ' (you)' : ''}
-                    </div>
+                    </Link>
                     <div className="podium-pts">{entry.total_points} pts</div>
                     <div className={`podium-bar rank-${rank}`} />
                   </div>
@@ -106,8 +110,15 @@ export default function Leaderboard() {
                     {index < 3 ? medals[index] : `${index + 1}`}
                   </span>
                   <span className="lb-name">
-                    {entry.profiles?.display_name || 'Player'}
+                    <Link
+                      to={`/player/${entry.user_id}`}
+                      className="lb-player-link"
+                      title={settings?.group_picks_locked ? 'View picks' : 'Picks hidden until locked'}
+                    >
+                      {entry.profiles?.display_name || 'Player'}
+                    </Link>
                     {isMe && <span className="you-tag">you</span>}
+                    {settings?.group_picks_locked && <span className="lb-picks-hint">👁</span>}
                   </span>
                   <span className="pts-col">{entry.group_points ?? 0}</span>
                   <span className="pts-col">{entry.bracket_points ?? 0}</span>
@@ -116,6 +127,9 @@ export default function Leaderboard() {
               )
             })}
           </div>
+          {settings?.group_picks_locked && (
+            <div className="lb-picks-tip">👁 Tap a player's name to see their picks</div>
+          )}
         </div>
       )}
 

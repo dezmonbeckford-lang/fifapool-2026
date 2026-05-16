@@ -188,7 +188,7 @@ export default function Picks() {
         >
           <span className="step-num">1</span>
           <span>Group Picks</span>
-          <span className="step-count">{completedGroups}/12</span>
+          <span className="step-count">{completedGroups}/{GROUPS.length}</span>
         </button>
         <div className="step-divider" />
         <button
@@ -197,7 +197,7 @@ export default function Picks() {
         >
           <span className="step-num">2</span>
           <span>Wildcard Picks</span>
-          <span className="step-count">{wildcardPicks.length}/8</span>
+          <span className="step-count">{wildcardPicks.length}/{WILDCARD_COUNT}</span>
         </button>
       </div>
 
@@ -231,11 +231,11 @@ export default function Picks() {
           {/* Progress bar */}
           <div className="picks-progress-bar">
             <div className="ppb-label">
-              <span>{completedGroups} of 12 groups done</span>
+              <span>{completedGroups} of {GROUPS.length} groups done</span>
               {allGroupsDone && <span className="ppb-done">✓ All done!</span>}
             </div>
             <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${(completedGroups / 12) * 100}%` }} />
+              <div className="progress-fill" style={{ width: `${(completedGroups / GROUPS.length) * 100}%` }} />
             </div>
           </div>
 

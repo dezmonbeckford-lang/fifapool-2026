@@ -11,6 +11,7 @@ import Picks from './pages/Picks'
 import BracketPicks from './pages/BracketPicks'
 import Leaderboard from './pages/Leaderboard'
 import Admin from './pages/Admin'
+import PlayerPicks from './pages/PlayerPicks'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/picks" element={<Protected><Picks /></Protected>} />
             <Route path="/bracket" element={<Protected><BracketPicks /></Protected>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+            <Route path="/player/:userId" element={<Protected><PlayerPicks /></Protected>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
