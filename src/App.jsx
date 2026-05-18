@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
+import { startKeepAlive } from './lib/keepAlive'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -29,6 +31,8 @@ function AdminRoute({ children }) {
 }
 
 export default function App() {
+  useEffect(() => { startKeepAlive() }, [])
+
   return (
     <AuthProvider>
       <BrowserRouter>

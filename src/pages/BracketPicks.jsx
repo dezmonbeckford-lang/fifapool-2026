@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { TEAM_FLAGS } from '../data/groups'
 import { BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
 import { saveWithRetry } from '../lib/saveWithRetry'
+import { readWithRetry } from '../lib/readWithRetry'
 import './BracketPicks.css'
 
 const ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
@@ -28,26 +29,26 @@ export default function BracketPicks() {
 
   async function loadData() {
     setLoading(true)
-    const safeguard = setTimeout(() => setLoading(false), 8000)
     try {
-      const queries = [
-        supabase.from('settings').select('*').single(),
-        supabase.from('bracket_matches').select('*').order('round_order').order('match_number'),
+      const baseQueries = [
+        readWithRetry(sig => supabase.from('settings').select('*').single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('bracket_matches').select('*').order('round_order').order('match_number').abortSignal(sig)),
       ]
       if (user?.id) {
-        queries.push(supabase.from('bracket_picks').select('*').eq('user_id', user.id))
+        baseQueries.push(readWithRetry(sig => supabase.from('bracket_picks').select('*').eq('user_id', user.id).abortSignal(sig)))
       }
 
-      const [{ data: settings }, { data: matchData }, picksRes] = await Promise.all(queries)
+      const [settingsRes, matchesRes, picksRes] = await Promise.all(baseQueries)
 
-      if (settings) {
-        setLocked(settings.bracket_picks_locked)
-        setPhase(settings.phase || 1)
+      if (settingsRes?.data) {
+        setLocked(settingsRes.data.bracket_picks_locked)
+        setPhase(settingsRes.data.phase || 1)
       }
 
-      setMatches(matchData || [])
+      const matchData = matchesRes?.data || []
+      setMatches(matchData)
       const resultMap = {}
-      ;(matchData || []).forEach(m => {
+      matchData.forEach(m => {
         if (m.result_entered) resultMap[m.id] = m.actual_winner
       })
       setResults(resultMap)
@@ -66,7 +67,6 @@ export default function BracketPicks() {
     } catch (e) {
       setError('Failed to load bracket')
     } finally {
-      clearTimeout(safeguard)
       setLoading(false)
     }
   }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth.jsx'
+import { readWithRetry } from '../lib/readWithRetry'
 import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
 import { BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
 import './PlayerPicks.css'
@@ -20,6 +21,7 @@ export default function PlayerPicks() {
   const [bracketMatches, setMatches]  = useState([])
   const [score, setScore]             = useState(null)
   const [loading, setLoading]         = useState(true)
+  const [loadError, setLoadError]     = useState('')
   const [activeTab, setActiveTab]     = useState('groups')
   const [notFound, setNotFound]       = useState(false)
 
@@ -29,42 +31,35 @@ export default function PlayerPicks() {
 
   async function loadData() {
     setLoading(true)
+    setLoadError('')
     try {
-      const [
-        { data: profile, error: pErr },
-        { data: settingsData },
-        { data: gp },
-        { data: wp },
-        { data: bp },
-        { data: matches },
-        { data: scoreData },
-      ] = await Promise.all([
-        supabase.from('profiles').select('id, display_name, email').eq('id', userId).single(),
-        supabase.from('settings').select('*').single(),
-        supabase.from('group_picks').select('*').eq('user_id', userId),
-        supabase.from('wildcard_picks').select('team').eq('user_id', userId),
-        supabase.from('bracket_picks').select('*').eq('user_id', userId),
-        supabase.from('bracket_matches').select('*').order('round_order').order('match_number'),
-        supabase.from('scores').select('*').eq('user_id', userId).single(),
+      const [profileRes, settingsRes, gpRes, wpRes, bpRes, matchesRes, scoreRes] = await Promise.all([
+        readWithRetry(sig => supabase.from('profiles').select('id, display_name, email').eq('id', userId).single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings').select('*').single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('group_picks').select('*').eq('user_id', userId).abortSignal(sig)),
+        readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', userId).abortSignal(sig)),
+        readWithRetry(sig => supabase.from('bracket_picks').select('*').eq('user_id', userId).abortSignal(sig)),
+        readWithRetry(sig => supabase.from('bracket_matches').select('*').order('round_order').order('match_number').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('scores').select('*').eq('user_id', userId).single().abortSignal(sig)),
       ])
 
-      if (pErr || !profile) { setNotFound(true); return }
+      if (profileRes?.error || !profileRes?.data) { setNotFound(true); return }
 
-      setPlayer(profile)
-      setSettings(settingsData)
-      setScore(scoreData)
+      setPlayer(profileRes.data)
+      setSettings(settingsRes?.data || null)
+      setScore(scoreRes?.data || null)
 
       // Group picks
       const gMap = {}
-      ;(gp || []).forEach(row => {
+      ;(gpRes?.data || []).forEach(row => {
         gMap[row.group_id] = { winner: row.winner || '', runnerUp: row.runner_up || '' }
       })
       setGroupPicks(gMap)
-      setWildcard((wp || []).map(r => r.team))
+      setWildcard((wpRes?.data || []).map(r => r.team))
 
       // Bracket picks
       const bMap = {}
-      ;(bp || []).forEach(p => {
+      ;(bpRes?.data || []).forEach(p => {
         bMap[p.match_id] = {
           picked_winner: p.picked_winner,
           tb1: p.tiebreaker_score1,
@@ -72,15 +67,31 @@ export default function PlayerPicks() {
         }
       })
       setBracket(bMap)
-      setMatches(matches || [])
-    } catch {
-      setNotFound(true)
+      setMatches(matchesRes?.data || [])
+    } catch (err) {
+      const isAbort = err?.name === 'AbortError' || err?.message?.toLowerCase().includes('abort')
+      if (isAbort) {
+        setLoadError('Server is waking up — tap retry')
+      } else {
+        setNotFound(true)
+      }
     } finally {
       setLoading(false)
     }
   }
 
   if (loading) return <div className="page-center"><div className="spinner" /></div>
+
+  if (loadError) return (
+    <div className="page-center">
+      <div className="card" style={{ textAlign: 'center', padding: 40, maxWidth: 360 }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>⚽</div>
+        <p style={{ color: 'var(--text2)', marginBottom: 20 }}>{loadError}</p>
+        <button className="btn btn-primary" onClick={loadData}>Retry</button>
+      </div>
+    </div>
+  )
+
   if (notFound) return (
     <div className="page-center">
       <div className="card" style={{ textAlign: 'center', padding: 40 }}>

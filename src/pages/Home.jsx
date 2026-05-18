@@ -2,23 +2,33 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
+import { readWithRetry } from '../lib/readWithRetry'
 import './Home.css'
 
 export default function Home() {
   const { user } = useAuth()
   const [stats, setStats] = useState(null)
 
-  useEffect(() => {
-    loadStats()
-  }, [])
+  useEffect(() => { loadStats() }, [])
 
   async function loadStats() {
-    const [{ data: scores }, { data: settings }] = await Promise.all([
-      supabase.from('scores').select('user_id, total_points, profiles(display_name)').order('total_points', { ascending: false }).limit(3),
-      supabase.from('settings').select('phase, group_picks_locked, bracket_picks_locked, bracket_unlock_at').single(),
-    ])
-    const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true })
-    setStats({ top3: scores || [], settings: settings || {}, playerCount: count || 0 })
+    try {
+      const [scores, settings, countRes] = await Promise.all([
+        readWithRetry(sig => supabase.from('scores')
+          .select('user_id, total_points, profiles(display_name)')
+          .order('total_points', { ascending: false }).limit(3).abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings')
+          .select('phase, group_picks_locked, bracket_picks_locked')
+          .single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('profiles')
+          .select('id', { count: 'exact', head: true }).abortSignal(sig)),
+      ])
+      setStats({
+        top3: scores?.data || [],
+        settings: settings?.data || {},
+        playerCount: countRes?.count || 0,
+      })
+    } catch { /* non-fatal — home page degrades gracefully */ }
   }
 
   const phase = stats?.settings?.phase ?? 1

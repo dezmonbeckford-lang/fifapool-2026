@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS } from '../data/groups'
 import { ROUND_LABELS } from '../data/scoring'
 import { saveWithRetry } from '../lib/saveWithRetry'
+import { readWithRetry } from '../lib/readWithRetry'
 import './Admin.css'
 
 export default function Admin() {
@@ -20,9 +21,14 @@ export default function Admin() {
   }, [profile])
 
   async function loadSettings() {
-    const { data } = await supabase.from('settings').select('*').single()
-    setSettings(data || { phase: 1, group_picks_locked: false, bracket_picks_locked: false })
-    setLoading(false)
+    try {
+      const res = await readWithRetry(sig => supabase.from('settings').select('*').single().abortSignal(sig))
+      setSettings(res?.data || { phase: 1, group_picks_locked: false, bracket_picks_locked: false })
+    } catch {
+      setMsg('Failed to load settings — please refresh')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function saveSettings() {
@@ -277,16 +283,19 @@ function GroupResultsTab({ onMsg }) {
   useEffect(() => { loadExisting() }, [])
 
   async function loadExisting() {
-    const [{ data: gr }, { data: wa }] = await Promise.all([
-      supabase.from('group_results').select('*'),
-      supabase.from('wildcard_advancers').select('team'),
-    ])
-    const r = {}
-    if (gr) gr.forEach(row => { r[row.group_id] = { winner: row.winner, runnerUp: row.runner_up } })
-    setExisting(r)
-    setResults(r)
-    if (wa) setWildcardAdvancers(wa.map(r => r.team))
-    setLoading(false)
+    try {
+      const [grRes, waRes] = await Promise.all([
+        readWithRetry(sig => supabase.from('group_results').select('*').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('wildcard_advancers').select('team').abortSignal(sig)),
+      ])
+      const r = {}
+      ;(grRes?.data || []).forEach(row => { r[row.group_id] = { winner: row.winner, runnerUp: row.runner_up } })
+      setExisting(r)
+      setResults(r)
+      setWildcardAdvancers((waRes?.data || []).map(r => r.team))
+    } catch { /* non-fatal, stays empty */ } finally {
+      setLoading(false)
+    }
   }
 
   function toggleWildcardAdvancer(team) {
@@ -415,19 +424,19 @@ function BracketSetupTab({ onMsg }) {
   useEffect(() => { loadMatches() }, [])
 
   async function loadMatches() {
-    const { data } = await supabase
-      .from('bracket_matches')
-      .select('*')
-      .eq('round', 'R32')
-      .order('match_number')
-    if (data?.length) {
-      setInitialized(true)
-      setR32Matches(data.map(m => ({ id: m.id, team1: m.team1 || '', team2: m.team2 || '', match_number: m.match_number })))
-    } else {
-      setInitialized(false)
-      setR32Matches(Array.from({ length: 16 }, (_, i) => ({ id: null, team1: '', team2: '', match_number: i + 1 })))
+    try {
+      const res = await readWithRetry(sig => supabase.from('bracket_matches').select('*').eq('round', 'R32').order('match_number').abortSignal(sig))
+      const data = res?.data || []
+      if (data.length) {
+        setInitialized(true)
+        setR32Matches(data.map(m => ({ id: m.id, team1: m.team1 || '', team2: m.team2 || '', match_number: m.match_number })))
+      } else {
+        setInitialized(false)
+        setR32Matches(Array.from({ length: 16 }, (_, i) => ({ id: null, team1: '', team2: '', match_number: i + 1 })))
+      }
+    } catch { /* non-fatal */ } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function handleInit() {
@@ -538,13 +547,12 @@ function BracketResultsTab({ onMsg }) {
   useEffect(() => { loadMatches() }, [])
 
   async function loadMatches() {
-    const { data } = await supabase
-      .from('bracket_matches')
-      .select('*')
-      .order('round_order', { ascending: true })
-      .order('match_number', { ascending: true })
-    setMatches(data || [])
-    setLoading(false)
+    try {
+      const res = await readWithRetry(sig => supabase.from('bracket_matches').select('*').order('round_order', { ascending: true }).order('match_number', { ascending: true }).abortSignal(sig))
+      setMatches(res?.data || [])
+    } catch { /* non-fatal */ } finally {
+      setLoading(false)
+    }
   }
 
   async function saveResult(matchId, winner) {
@@ -651,24 +659,24 @@ function PlayersTab({ onMsg }) {
   useEffect(() => { loadPlayers() }, [])
 
   async function loadPlayers() {
-    const [{ data: profiles }, { data: scores }, { data: gp }] = await Promise.all([
-      supabase.from('profiles').select('id, display_name, email, is_admin, created_at').order('created_at'),
-      supabase.from('scores').select('user_id, group_points, bracket_points, total_points'),
-      supabase.from('group_picks').select('user_id'),
-    ])
-
-    const scoreMap = {}
-    if (scores) scores.forEach(s => { scoreMap[s.user_id] = s })
-
-    const gpSet = new Set()
-    if (gp) gp.forEach(p => gpSet.add(p.user_id))
-
-    setPlayers((profiles || []).map(p => ({
-      ...p,
-      score: scoreMap[p.id] || null,
-      hasPicks: gpSet.has(p.id),
-    })))
-    setLoading(false)
+    try {
+      const [profRes, scoreRes, gpRes] = await Promise.all([
+        readWithRetry(sig => supabase.from('profiles').select('id, display_name, email, is_admin, created_at').order('created_at').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('group_picks').select('user_id').abortSignal(sig)),
+      ])
+      const scoreMap = {}
+      ;(scoreRes?.data || []).forEach(s => { scoreMap[s.user_id] = s })
+      const gpSet = new Set()
+      ;(gpRes?.data || []).forEach(p => gpSet.add(p.user_id))
+      setPlayers((profRes?.data || []).map(p => ({
+        ...p,
+        score: scoreMap[p.id] || null,
+        hasPicks: gpSet.has(p.id),
+      })))
+    } catch { /* non-fatal */ } finally {
+      setLoading(false)
+    }
   }
 
   async function toggleAdmin(userId, currentVal) {
