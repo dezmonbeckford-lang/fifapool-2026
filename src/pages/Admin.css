@@ -67,6 +67,49 @@
 }
 .toggle-btn.on { background: rgba(245,158,11,0.15); border-color: var(--gold); color: var(--gold); }
 
+/* ── Quick Actions (Tournament Flow) ── */
+.qa-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.qa-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.qa-step:last-child { border-bottom: none; }
+
+.qa-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.qa-info { flex: 1; min-width: 0; }
+.qa-title { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+.qa-desc  { font-size: 12px; color: var(--text2); line-height: 1.4; }
+
+@media (max-width: 500px) {
+  .qa-step { flex-wrap: wrap; gap: 10px; }
+  .qa-info { flex-basis: calc(100% - 44px); }
+}
+
 /* Groups results */
 .groups-results-grid {
   display: grid;

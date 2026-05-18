@@ -44,6 +44,23 @@ export default function Admin() {
     }
   }
 
+  // ── Quick tournament-flow actions ───────────────────────────────
+  async function quickAction(updates, successMsg) {
+    setSaving(true)
+    try {
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase.from('settings').upsert({ id: 1, ...updates }).abortSignal(signal)
+        if (error) throw error
+      })
+      setSettings(s => ({ ...s, ...updates }))
+      setMsg(successMsg)
+    } catch (err) {
+      setMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function recalcScores() {
     setSaving(true)
     try {
@@ -173,6 +190,70 @@ export default function Admin() {
             <button className="btn btn-outline" onClick={recalcScores} disabled={saving}>
               🔄 Recalculate All Scores
             </button>
+          </div>
+
+          {/* ── Tournament Flow Quick Actions ── */}
+          <div style={{ marginTop: 28, borderTop: '1px solid var(--border)', paddingTop: 24 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>⚡ Tournament Flow</h3>
+            <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>
+              One-click shortcuts to advance through each phase. Run them in order.
+            </p>
+
+            <div className="qa-steps">
+              <div className="qa-step">
+                <div className="qa-num">1</div>
+                <div className="qa-info">
+                  <div className="qa-title">Lock Group Picks</div>
+                  <div className="qa-desc">
+                    Run after group stage deadline. Freezes all picks &amp; reveals them to everyone.
+                  </div>
+                </div>
+                <button
+                  className={`btn btn-sm${settings.group_picks_locked ? ' btn-outline' : ' btn-primary'}`}
+                  onClick={() => quickAction({ group_picks_locked: true }, '✓ Group picks locked — picks are now public')}
+                  disabled={saving || settings.group_picks_locked}
+                >
+                  {settings.group_picks_locked ? '🔒 Done' : '🔒 Lock Now'}
+                </button>
+              </div>
+
+              <div className="qa-step">
+                <div className="qa-num">2</div>
+                <div className="qa-info">
+                  <div className="qa-title">Open Bracket Picks</div>
+                  <div className="qa-desc">
+                    Run after entering R32 teams in Bracket Setup. Advances to Phase 2 instantly.
+                  </div>
+                </div>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => quickAction(
+                    { bracket_unlock_at: new Date().toISOString(), phase: 2 },
+                    '✓ Bracket open! Users can now make bracket picks.'
+                  )}
+                  disabled={saving}
+                >
+                  🏆 Open Now
+                </button>
+              </div>
+
+              <div className="qa-step">
+                <div className="qa-num">3</div>
+                <div className="qa-info">
+                  <div className="qa-title">Lock Bracket Picks</div>
+                  <div className="qa-desc">
+                    Run before the first R32 match kicks off. Then enter results in the Results tab.
+                  </div>
+                </div>
+                <button
+                  className={`btn btn-sm${settings.bracket_picks_locked ? ' btn-outline' : ' btn-primary'}`}
+                  onClick={() => quickAction({ bracket_picks_locked: true }, '✓ Bracket picks locked — now enter results in the Results tab')}
+                  disabled={saving || settings.bracket_picks_locked}
+                >
+                  {settings.bracket_picks_locked ? '🔒 Done' : '🔒 Lock Now'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
