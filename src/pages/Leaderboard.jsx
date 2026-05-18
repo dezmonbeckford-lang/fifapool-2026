@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
+import { useLoadGuard } from '../lib/useLoadGuard.jsx'
 import './Leaderboard.css'
 
 export default function Leaderboard() {
@@ -66,7 +67,8 @@ export default function Leaderboard() {
 
   const medals = ['🥇', '🥈', '🥉']
 
-  if (loading) return <div className="page-center"><div className="spinner" /></div>
+  const { guardEl } = useLoadGuard(loading, loadLeaderboard)
+  if (loading) return guardEl
 
   if (error && entries.length === 0) {
     return (

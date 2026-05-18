@@ -5,6 +5,7 @@ import { TEAM_FLAGS } from '../data/groups'
 import { BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
 import { saveWithRetry } from '../lib/saveWithRetry'
 import { readWithRetry } from '../lib/readWithRetry'
+import { useLoadGuard } from '../lib/useLoadGuard.jsx'
 import './BracketPicks.css'
 
 const ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
@@ -71,6 +72,9 @@ export default function BracketPicks() {
     }
   }
 
+  const { guardEl } = useLoadGuard(loading, loadData)
+  if (loading) return guardEl
+
   // Bracket opens when admin advances to Phase 2 (not time-based)
   const isOpen = phase >= 2
   const byRound = {}
@@ -136,7 +140,6 @@ export default function BracketPicks() {
     }
   }
 
-  if (loading) return <div className="page-center"><div className="spinner" /></div>
 
   // ── Waiting for group stage to complete ──────────────────────
   if (!isOpen) {

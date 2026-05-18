@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { readWithRetry } from '../lib/readWithRetry'
+import { useLoadGuard } from '../lib/useLoadGuard.jsx'
 import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
 import { BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
 import './PlayerPicks.css'
@@ -80,7 +81,8 @@ export default function PlayerPicks() {
     }
   }
 
-  if (loading) return <div className="page-center"><div className="spinner" /></div>
+  const { guardEl } = useLoadGuard(loading, loadData)
+  if (loading) return guardEl
 
   if (loadError) return (
     <div className="page-center">

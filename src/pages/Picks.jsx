@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
 import { saveWithRetry } from '../lib/saveWithRetry'
 import { readWithRetry } from '../lib/readWithRetry'
+import { useLoadGuard } from '../lib/useLoadGuard.jsx'
 import './Picks.css'
 
 export default function Picks() {
@@ -30,17 +31,17 @@ export default function Picks() {
 
   async function loadData() {
     setLoading(true)
-    const safeguard = setTimeout(() => setLoading(false), 8000)
     try {
-      // Run all three queries in parallel with abort + retry
-      const [settings, gp, wp] = await Promise.all([
+      const [settingsRes, gpRes, wpRes] = await Promise.all([
         readWithRetry(sig => supabase.from('settings').select('*').single().abortSignal(sig)),
         readWithRetry(sig => supabase.from('group_picks').select('*').eq('user_id', user.id).abortSignal(sig)),
         readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', user.id).abortSignal(sig)),
       ])
-      if (settings_data) setLocked(settings_data.group_picks_locked)
 
-      if (gp_data && gp_data.length > 0) {
+      if (settingsRes?.data) setLocked(settingsRes.data.group_picks_locked)
+
+      const gp_data = gpRes?.data || []
+      if (gp_data.length > 0) {
         const parsed = {}
         gp_data.forEach(row => {
           parsed[row.group_id] = { winner: row.winner || '', runnerUp: row.runner_up || '' }
@@ -51,11 +52,11 @@ export default function Picks() {
         setGroupPicks(parsed)
       }
 
-      if (wp_data && wp_data.length > 0) setWildcardPicks(wp_data.map(r => r.team))
+      const wp_data = wpRes?.data || []
+      if (wp_data.length > 0) setWildcardPicks(wp_data.map(r => r.team))
     } catch {
       setError('Failed to load picks. Check your connection.')
     } finally {
-      clearTimeout(safeguard)
       setLoading(false)
     }
   }
@@ -176,7 +177,8 @@ export default function Picks() {
     }
   }
 
-  if (loading) return <div className="page-center"><div className="spinner" /></div>
+  const { guardEl } = useLoadGuard(loading, loadData)
+  if (loading) return guardEl
 
   return (
     <div className="picks-page">
