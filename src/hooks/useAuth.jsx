@@ -48,12 +48,25 @@ export function AuthProvider({ children }) {
     }
 
     async function fetchProfile(userId) {
-      try {
-        const { data } = await supabase
-          .from('profiles').select('*').eq('id', userId).single()
-        if (mounted) setProfile(data ?? null)
-      } catch {
-        if (mounted) setProfile(null)
+      // Retry up to 3 times — handles Supabase cold starts that hang
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const controller = new AbortController()
+        const tid = setTimeout(() => controller.abort(), 8000)
+        try {
+          const { data, error } = await supabase
+            .from('profiles').select('*').eq('id', userId).single()
+            .abortSignal(controller.signal)
+          clearTimeout(tid)
+          if (error) throw error
+          if (mounted) setProfile(data ?? null)
+          return
+        } catch (err) {
+          clearTimeout(tid)
+          const isAbort = err?.name === 'AbortError' || err?.message?.toLowerCase().includes('abort')
+          if (isAbort && attempt < 2) continue   // retry on timeout
+          if (mounted) setProfile(null)
+          return
+        }
       }
     }
 
@@ -94,10 +107,15 @@ export function AuthProvider({ children }) {
 
   async function refreshProfile() {
     if (!user) return
+    const controller = new AbortController()
+    const tid = setTimeout(() => controller.abort(), 8000)
     try {
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        .abortSignal(controller.signal)
       setProfile(data ?? null)
-    } catch { /* non-fatal */ }
+    } catch { /* non-fatal */ } finally {
+      clearTimeout(tid)
+    }
   }
 
   return (
