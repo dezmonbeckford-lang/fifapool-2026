@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { TEAM_FLAGS } from '../data/groups'
@@ -14,20 +14,16 @@ export default function BracketPicks() {
   const [myPicks, setMyPicks]         = useState({})   // { matchId: { picked_winner, tb1, tb2 } }
   const [results, setResults]         = useState({})   // { matchId: actual_winner }
   const [locked, setLocked]           = useState(false)
-  const [unlockAt, setUnlockAt]       = useState(null)
-  const [now, setNow]                 = useState(new Date())
+  const [phase, setPhase]             = useState(1)
   const [activeRound, setActiveRound] = useState('R32')
   const [saving, setSaving]           = useState(false)
   const [saveStatus, setSaveStatus]   = useState('')
   const [saved, setSaved]             = useState(false)
   const [error, setError]             = useState('')
   const [loading, setLoading]         = useState(true)
-  const timerRef = useRef(null)
 
   useEffect(() => {
     loadData()
-    timerRef.current = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(timerRef.current)
   }, [user?.id])
 
   async function loadData() {
@@ -46,7 +42,7 @@ export default function BracketPicks() {
 
       if (settings) {
         setLocked(settings.bracket_picks_locked)
-        setUnlockAt(settings.bracket_unlock_at ? new Date(settings.bracket_unlock_at) : null)
+        setPhase(settings.phase || 1)
       }
 
       setMatches(matchData || [])
@@ -75,7 +71,8 @@ export default function BracketPicks() {
     }
   }
 
-  const isOpen = unlockAt ? now >= unlockAt : false
+  // Bracket opens when admin advances to Phase 2 (not time-based)
+  const isOpen = phase >= 2
   const byRound = {}
   ROUND_ORDER.forEach(r => { byRound[r] = matches.filter(m => m.round === r) })
 
@@ -141,30 +138,15 @@ export default function BracketPicks() {
 
   if (loading) return <div className="page-center"><div className="spinner" /></div>
 
-  // ── Countdown screen ─────────────────────────────────────────
-  if (!isOpen && unlockAt) {
-    const diff = unlockAt - now
-    const d = Math.floor(diff / 86400000)
-    const h = Math.floor((diff % 86400000) / 3600000)
-    const m = Math.floor((diff % 3600000) / 60000)
-    const s = Math.floor((diff % 60000) / 1000)
-
+  // ── Waiting for group stage to complete ──────────────────────
+  if (!isOpen) {
     return (
       <div className="bracket-locked-screen">
         <div className="bls-card card">
           <div className="bls-icon">🏆</div>
           <h2>Bracket Picks Opening Soon</h2>
-          <p>The Round of 32 bracket will unlock once the group stage is complete.</p>
-          <div className="countdown">
-            <div className="cd-unit"><span>{d}</span><label>Days</label></div>
-            <div className="cd-sep">:</div>
-            <div className="cd-unit"><span>{String(h).padStart(2,'0')}</span><label>Hrs</label></div>
-            <div className="cd-sep">:</div>
-            <div className="cd-unit"><span>{String(m).padStart(2,'0')}</span><label>Min</label></div>
-            <div className="cd-sep">:</div>
-            <div className="cd-unit"><span>{String(s).padStart(2,'0')}</span><label>Sec</label></div>
-          </div>
-          <p className="bls-sub">Unlocks June 27 at 11:00 PM ET — after the last group stage game</p>
+          <p>The Round of 32 bracket will open once the group stage is complete and the admin has set the bracket teams.</p>
+          <p className="bls-sub">Check back after the group stage — you'll be able to pick winners for every round all the way to the Final.</p>
         </div>
       </div>
     )
