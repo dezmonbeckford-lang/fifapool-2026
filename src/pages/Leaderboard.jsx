@@ -22,12 +22,18 @@ export default function Leaderboard() {
   }, [])
 
   async function loadLeaderboard() {
+    setLoading(true)
+    setError('')
+
+    // Safeguard: never spin forever — abort after 10s and show retry
+    const controller = new AbortController()
+    const safeguard = setTimeout(() => controller.abort(), 10000)
+
     try {
-      // Load all profiles, scores, and settings in parallel
       const [{ data: profiles, error: pErr }, { data: scores, error: sErr }, { data: settingsData }] = await Promise.all([
-        supabase.from('profiles').select('id, display_name, email'),
-        supabase.from('scores').select('user_id, group_points, bracket_points, total_points'),
-        supabase.from('settings').select('group_picks_locked').single(),
+        supabase.from('profiles').select('id, display_name, email').abortSignal(controller.signal),
+        supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(controller.signal),
+        supabase.from('settings').select('group_picks_locked').single().abortSignal(controller.signal),
       ])
       if (pErr) throw pErr
       if (sErr) throw sErr
@@ -47,8 +53,13 @@ export default function Leaderboard() {
       setEntries(merged)
       setSettings(settingsData)
     } catch (err) {
-      setError('Failed to load leaderboard')
+      if (err.name === 'AbortError' || err.message?.toLowerCase().includes('abort')) {
+        setError('Server is waking up — tap retry')
+      } else {
+        setError('Failed to load leaderboard')
+      }
     } finally {
+      clearTimeout(safeguard)
       setLoading(false)
     }
   }
@@ -56,6 +67,18 @@ export default function Leaderboard() {
   const medals = ['🥇', '🥈', '🥉']
 
   if (loading) return <div className="page-center"><div className="spinner" /></div>
+
+  if (error && entries.length === 0) {
+    return (
+      <div className="page-center">
+        <div className="card" style={{ textAlign: 'center', padding: 32, maxWidth: 360 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>⚽</div>
+          <p style={{ marginBottom: 20, color: 'var(--text2)' }}>{error}</p>
+          <button className="btn btn-primary" onClick={loadLeaderboard}>Retry</button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="leaderboard-page">
