@@ -145,25 +145,8 @@ export default function PlayerPicks() {
         </div>
       </div>
 
-      {/* ── Lock gate ── */}
-      {!groupPicksLocked && (
-        <div className="pp-locked card">
-          <div className="pp-locked-icon">🔒</div>
-          <h2>Picks are hidden until the deadline</h2>
-          <p>
-            {isOwnProfile
-              ? 'Once picks lock, everyone will be able to see your selections here.'
-              : "Player picks are revealed once the group stage pick deadline passes. Check back then!"}
-          </p>
-          {isOwnProfile && (
-            <Link to="/picks" className="btn btn-primary" style={{ marginTop: 16 }}>View / Edit My Picks →</Link>
-          )}
-        </div>
-      )}
-
-      {/* ── Picks content (only when locked) ── */}
-      {groupPicksLocked && (
-        <>
+      {/* ── Picks content ── */}
+      <>
           {/* Tab bar — only show if bracket is also active */}
           {bracketActive && (
             <div className="pp-tabs">
@@ -342,8 +325,7 @@ export default function PlayerPicks() {
               )}
             </div>
           )}
-        </>
-      )}
+      </>
     </div>
   )
 }
