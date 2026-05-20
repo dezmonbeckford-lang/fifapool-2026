@@ -1,8 +1,38 @@
 -- ══════════════════════════════════════════════════════════════════
 -- FifaPool 2026 — Schema v5
--- Scoring update: 1st-place bonus reduced from +2 to +1
+-- 1. Scoring update: 1st-place bonus reduced from +2 to +1
+-- 2. generate_bracket: DELETE → DELETE WHERE true (Supabase safety)
 -- Run in: Supabase Dashboard → SQL Editor → New query → Run All
 -- ══════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION generate_bracket()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  DELETE FROM bracket_picks WHERE true;
+  DELETE FROM bracket_matches WHERE true;
+
+  INSERT INTO bracket_matches (round, round_order, match_number, points_value)
+  SELECT 'R32', 1, s.n, 5 FROM generate_series(1, 16) AS s(n);
+
+  INSERT INTO bracket_matches (round, round_order, match_number, points_value)
+  SELECT 'R16', 2, s.n, 8 FROM generate_series(1, 8) AS s(n);
+
+  INSERT INTO bracket_matches (round, round_order, match_number, points_value)
+  SELECT 'QF', 3, s.n, 11 FROM generate_series(1, 4) AS s(n);
+
+  INSERT INTO bracket_matches (round, round_order, match_number, points_value)
+  SELECT 'SF', 4, s.n, 14 FROM generate_series(1, 2) AS s(n);
+
+  INSERT INTO bracket_matches (round, round_order, match_number, points_value)
+  VALUES ('THIRD', 5, 1, 10);
+
+  INSERT INTO bracket_matches (round, round_order, match_number, points_value, is_final)
+  VALUES ('FINAL', 6, 1, 17, true);
+END;
+$$;
 
 create or replace function calculate_group_scores()
 returns void
