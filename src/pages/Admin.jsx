@@ -415,6 +415,14 @@ function GroupResultsTab({ onMsg }) {
 // ── Bracket Setup ───────────────────────────────────────────────
 const ROUND_POINTS = { R32: 5, R16: 8, QF: 11, SF: 14, THIRD: 10, FINAL: 17 }
 
+// Matches 1-12 have pre-determined FIFA 2026 group-position matchups.
+// Matches 13-16 are wildcard slots that the admin fills manually.
+const WILDCARD_SLOTS = [13, 14, 15, 16]
+
+function isLabel(val) {
+  return val && (val.startsWith('Winner Group') || val.startsWith('Runner-up Group'))
+}
+
 function BracketSetupTab({ onMsg }) {
   const [r32Matches, setR32Matches] = useState([])
   const [initialized, setInitialized] = useState(false)
@@ -432,7 +440,7 @@ function BracketSetupTab({ onMsg }) {
         setR32Matches(data.map(m => ({ id: m.id, team1: m.team1 || '', team2: m.team2 || '', match_number: m.match_number })))
       } else {
         setInitialized(false)
-        setR32Matches(Array.from({ length: 16 }, (_, i) => ({ id: null, team1: '', team2: '', match_number: i + 1 })))
+        setR32Matches([])
       }
     } catch { /* non-fatal */ } finally {
       setLoading(false)
@@ -440,14 +448,14 @@ function BracketSetupTab({ onMsg }) {
   }
 
   async function handleInit() {
-    if (!window.confirm('This will create the full bracket structure (R32 through Final) and CLEAR any existing bracket picks. Continue?')) return
+    if (!window.confirm('This will create the full bracket structure (R32 → Final) with FIFA 2026 matchups pre-filled, and CLEAR any existing bracket picks. Continue?')) return
     setSaving(true)
     try {
       await saveWithRetry(async (signal) => {
         const { error } = await supabase.rpc('generate_bracket').abortSignal(signal)
         if (error) throw error
       })
-      onMsg('✓ Bracket structure created! Now fill in the 16 R32 matchups.')
+      onMsg('✓ Bracket created with FIFA matchups! Auto-fill from group results when ready, then set wildcard slots.')
       loadMatches()
     } catch (err) {
       onMsg(`Error: ${err.message}`)
@@ -456,23 +464,40 @@ function BracketSetupTab({ onMsg }) {
     }
   }
 
-  async function handleSaveTeams() {
-    const filled = r32Matches.filter(m => m.team1 && m.team2)
-    if (!filled.length) { onMsg('Error: Fill in at least one matchup first'); return }
+  async function handleAutoFill() {
+    if (!window.confirm('This will replace group-position labels (e.g. "Winner Group A") with the actual team names from your group results. Continue?')) return
+    setSaving(true)
+    try {
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase.rpc('populate_bracket_teams').abortSignal(signal)
+        if (error) throw error
+      })
+      onMsg('✓ Bracket teams filled in from group results!')
+      loadMatches()
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSaveWildcards() {
+    const wildcards = r32Matches.filter(m => WILDCARD_SLOTS.includes(m.match_number) && (m.team1 || m.team2))
+    if (!wildcards.length) { onMsg('Error: Fill in at least one wildcard slot first'); return }
     setSaving(true)
     try {
       await saveWithRetry(async (signal) => {
         await Promise.all(
-          filled.filter(m => m.id).map(m =>
+          wildcards.filter(m => m.id).map(m =>
             supabase.from('bracket_matches')
-              .update({ team1: m.team1, team2: m.team2 })
+              .update({ team1: m.team1 || null, team2: m.team2 || null })
               .eq('id', m.id)
               .abortSignal(signal)
               .then(r => { if (r.error) throw r.error })
           )
         )
       })
-      onMsg(`✓ ${filled.length} R32 matchups saved! Users can now make bracket picks.`)
+      onMsg(`✓ Wildcard matchups saved!`)
       loadMatches()
     } catch (err) {
       onMsg(`Error: ${err.message}`)
@@ -485,13 +510,16 @@ function BracketSetupTab({ onMsg }) {
     setR32Matches(prev => prev.map((m, i) => i === idx ? { ...m, [field]: val } : m))
   }
 
+  // Check if any matches still have un-replaced labels
+  const hasLabels = r32Matches.some(m => isLabel(m.team1) || isLabel(m.team2))
+
   if (loading) return <div className="spinner" />
 
   return (
     <div className="admin-section">
       <div className="admin-section-header">
         <h2>Bracket Setup</h2>
-        <p>First initialize the bracket structure, then fill in the 16 Round of 32 matchups.</p>
+        <p>Initialize the bracket, auto-fill from group results, then set the 4 wildcard matchups.</p>
       </div>
 
       {!initialized ? (
@@ -499,7 +527,8 @@ function BracketSetupTab({ onMsg }) {
           <div style={{ fontSize: 36, marginBottom: 12 }}>🏆</div>
           <h3>Bracket Not Initialized</h3>
           <p style={{ color: 'var(--text2)', margin: '8px 0 20px' }}>
-            Click below to create the full bracket structure (R32 → Final).<br />
+            Creates the full bracket (R32 → Final). Matches 1–12 are pre-filled with the official
+            FIFA 2026 group matchups. Matches 13–16 are wildcard slots you fill after the group stage.<br />
             <strong>Warning:</strong> This clears all existing bracket picks.
           </p>
           <button className="btn btn-primary btn-lg" onClick={handleInit} disabled={saving}>
@@ -509,27 +538,69 @@ function BracketSetupTab({ onMsg }) {
       ) : (
         <>
           <div className="success-msg" style={{ marginBottom: 16 }}>
-            ✓ Bracket initialized. Fill in team names for all 16 R32 matches.
+            ✓ Bracket initialized ({r32Matches.length} R32 matches)
           </div>
-          <div className="bracket-setup-grid">
-            {r32Matches.map((row, idx) => (
-              <div key={idx} className="bsu-row card">
-                <span className="bsu-num">{idx + 1}</span>
-                <input className="input bsu-input" placeholder="Team 1"
-                  value={row.team1} onChange={e => update(idx, 'team1', e.target.value)} />
+
+          {/* Auto-fill action */}
+          <div className="card" style={{ padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>🔄 Auto-fill from Group Results</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+                {hasLabels
+                  ? 'Replaces "Winner Group A" labels with actual team names from your saved group results.'
+                  : '✓ All group matchups have real team names.'}
+              </div>
+            </div>
+            <button className="btn btn-primary" onClick={handleAutoFill} disabled={saving || !hasLabels}>
+              {saving ? 'Filling…' : 'Auto-fill Teams'}
+            </button>
+          </div>
+
+          {/* Matches 1-12: group matchups (read-only display) */}
+          <h3 style={{ margin: '0 0 10px', fontSize: 15 }}>Matches 1–12 — Group Stage Matchups</h3>
+          <div className="bracket-setup-grid" style={{ marginBottom: 24 }}>
+            {r32Matches.filter(m => !WILDCARD_SLOTS.includes(m.match_number)).map((row) => (
+              <div key={row.match_number} className={`bsu-row card${isLabel(row.team1) || isLabel(row.team2) ? ' bsu-label' : ''}`}>
+                <span className="bsu-num">{row.match_number}</span>
+                <span className={`bsu-team-label${isLabel(row.team1) ? ' is-placeholder' : ''}`}>
+                  {row.team1 || 'TBD'}
+                </span>
                 <span className="bsu-vs">vs</span>
-                <input className="input bsu-input" placeholder="Team 2"
-                  value={row.team2} onChange={e => update(idx, 'team2', e.target.value)} />
+                <span className={`bsu-team-label${isLabel(row.team2) ? ' is-placeholder' : ''}`}>
+                  {row.team2 || 'TBD'}
+                </span>
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-            <button className="btn btn-primary btn-lg" onClick={handleSaveTeams} disabled={saving} style={{ flex: 1 }}>
-              {saving ? 'Saving…' : '💾 Save R32 Matchups'}
+
+          {/* Matches 13-16: wildcard slots (editable) */}
+          <h3 style={{ margin: '0 0 6px', fontSize: 15 }}>Matches 13–16 — Wildcard Slots</h3>
+          <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 12px' }}>
+            Fill these in once you know the 8 best 3rd-place teams (4 matches between them).
+          </p>
+          <div className="bracket-setup-grid" style={{ marginBottom: 16 }}>
+            {r32Matches.filter(m => WILDCARD_SLOTS.includes(m.match_number)).map((row, idx) => {
+              const globalIdx = r32Matches.findIndex(m => m.match_number === row.match_number)
+              return (
+                <div key={row.match_number} className="bsu-row card bsu-wildcard">
+                  <span className="bsu-num">{row.match_number}</span>
+                  <input className="input bsu-input" placeholder="Wildcard team"
+                    value={row.team1} onChange={e => update(globalIdx, 'team1', e.target.value)} />
+                  <span className="bsu-vs">vs</span>
+                  <input className="input bsu-input" placeholder="Wildcard team"
+                    value={row.team2} onChange={e => update(globalIdx, 'team2', e.target.value)} />
+                </div>
+              )
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+            <button className="btn btn-primary btn-lg" onClick={handleSaveWildcards} disabled={saving} style={{ flex: 1 }}>
+              {saving ? 'Saving…' : '💾 Save Wildcard Matchups'}
             </button>
             <button className="btn btn-outline" onClick={handleInit} disabled={saving}
               style={{ color: '#ef4444', borderColor: '#ef4444' }}>
-              Reset
+              Reset All
             </button>
           </div>
         </>

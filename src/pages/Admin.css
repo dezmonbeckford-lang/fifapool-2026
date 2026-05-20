@@ -218,6 +218,23 @@
 .bsu-input { flex: 1; padding: 6px 8px !important; font-size: 0.82rem !important; }
 .bsu-vs { font-size: 0.72rem; color: var(--text2); flex-shrink: 0; }
 
+/* Team label (read-only) in bracket setup */
+.bsu-team-label {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--text1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bsu-team-label.is-placeholder {
+  color: var(--text2);
+  font-style: italic;
+  font-size: 0.78rem;
+}
+.bsu-row.bsu-label { background: color-mix(in srgb, var(--surface) 95%, var(--accent) 5%); }
+.bsu-row.bsu-wildcard { border: 1.5px dashed var(--border); }
+
 /* Leaderboard potential col */
 .potential-col { color: var(--accent); font-weight: 600; }
 

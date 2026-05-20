@@ -307,12 +307,25 @@ export default function BracketPicks() {
   )
 }
 
+function isGroupLabel(val) {
+  return val && (val.startsWith('Winner Group') || val.startsWith('Runner-up Group'))
+}
+
 function TeamPickBtn({ team, picked, isWinner, isLoser, eliminated, onClick, disabled }) {
   if (!team) {
     return (
       <div className="tpb tpb-tbd">
         <span className="tpb-flag">🔲</span>
         <span className="tpb-name">TBD</span>
+      </div>
+    )
+  }
+  // Group-position label not yet replaced — show as informational, not clickable
+  if (isGroupLabel(team)) {
+    return (
+      <div className="tpb tpb-tbd">
+        <span className="tpb-flag">🏳️</span>
+        <span className="tpb-name" style={{ fontStyle: 'italic', fontSize: '0.78rem' }}>{team}</span>
       </div>
     )
   }
