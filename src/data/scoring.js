@@ -1,7 +1,7 @@
 export const GROUP_POINTS = {
   WINNER: 3,
   RUNNER_UP: 3,
-  WINNER_BONUS: 2,  // bonus if you nailed them as winner specifically
+  WINNER_BONUS: 1,  // bonus if you nailed them as 1st specifically
   WILDCARD: 2,
 }
 

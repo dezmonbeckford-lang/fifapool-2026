@@ -97,9 +97,8 @@ export default function Home() {
           <h3>Phase 1 — Group Stage</h3>
           <p>Pick the top 2 teams from all 12 groups, plus 8 Wildcard Picks for extra points.</p>
           <ul className="points-list">
-            <li><span>3 pts</span> Pick a team in top 2</li>
-            <li><span>+2 pts</span> Nailed them as 1st specifically</li>
-            <li><span>3 pts</span> Runner-up correct</li>
+            <li><span>3 pts</span> Each pick that lands in top 2</li>
+            <li><span>+1 pt</span> Bonus for nailing 1st place exactly</li>
             <li><span>2 pts</span> Each correct Wildcard Pick</li>
           </ul>
         </div>
