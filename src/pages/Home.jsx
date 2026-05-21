@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { readWithRetry } from '../lib/readWithRetry'
 import { getCached, setCached } from '../lib/dataCache'
+import { GROUPS, WILDCARD_COUNT } from '../data/groups'
 import './Home.css'
 
 const CACHE_KEY = 'home-stats'
@@ -11,17 +12,18 @@ const CACHE_KEY = 'home-stats'
 export default function Home() {
   const { user } = useAuth()
   const [stats, setStats] = useState(getCached(CACHE_KEY))
+  const [myPicksStatus, setMyPicksStatus] = useState(null)
   const mountedRef = useRef(true)
 
   useEffect(() => {
     mountedRef.current = true
     loadStats()
     return () => { mountedRef.current = false }
-  }, [])
+  }, [user?.id])
 
   async function loadStats() {
     try {
-      const [scores, settings, countRes] = await Promise.all([
+      const queries = [
         readWithRetry(sig => supabase.from('scores')
           .select('user_id, total_points, profiles(display_name)')
           .order('total_points', { ascending: false }).limit(3).abortSignal(sig)),
@@ -30,8 +32,16 @@ export default function Home() {
           .single().abortSignal(sig)),
         readWithRetry(sig => supabase.from('profiles')
           .select('id', { count: 'exact', head: true }).abortSignal(sig)),
-      ])
+      ]
+      if (user?.id) {
+        queries.push(readWithRetry(sig => supabase.from('group_picks')
+          .select('group_id, winner, runner_up').eq('user_id', user.id).abortSignal(sig)))
+        queries.push(readWithRetry(sig => supabase.from('wildcard_picks')
+          .select('team', { count: 'exact', head: true }).eq('user_id', user.id).abortSignal(sig)))
+      }
+      const [scores, settings, countRes, gpRes, wpRes] = await Promise.all(queries)
       if (!mountedRef.current) return
+
       const fresh = {
         top3: scores?.data || [],
         settings: settings?.data || {},
@@ -39,6 +49,18 @@ export default function Home() {
       }
       setStats(fresh)
       setCached(CACHE_KEY, fresh)
+
+      if (user?.id) {
+        const completedGroups = (gpRes?.data || []).filter(r => r.winner && r.runner_up).length
+        const wildcardCount = wpRes?.count || 0
+        setMyPicksStatus({
+          groupsDone: completedGroups,
+          groupsTotal: GROUPS.length,
+          wildcardDone: wildcardCount,
+          wildcardTotal: WILDCARD_COUNT,
+          allDone: completedGroups === GROUPS.length && wildcardCount === WILDCARD_COUNT,
+        })
+      }
     } catch { /* non-fatal — home page degrades gracefully */ }
   }
 
@@ -68,6 +90,21 @@ export default function Home() {
               👥 {stats.playerCount} player{stats.playerCount !== 1 ? 's' : ''}
             </span>
           </div>
+        )}
+
+        {/* Picks completion notice */}
+        {user && myPicksStatus && !groupLocked && (
+          myPicksStatus.allDone ? (
+            <div className="picks-complete-banner">
+              ✅ All picks submitted! You can still edit until the first game kicks off.
+            </div>
+          ) : myPicksStatus.groupsDone > 0 || myPicksStatus.wildcardDone > 0 ? (
+            <div className="picks-incomplete-banner">
+              ⏳ Picks in progress — {myPicksStatus.groupsDone}/{myPicksStatus.groupsTotal} groups
+              {myPicksStatus.wildcardDone > 0 ? `, ${myPicksStatus.wildcardDone}/${myPicksStatus.wildcardTotal} wildcards` : ''}.
+              {' '}<Link to="/picks">Finish your picks →</Link>
+            </div>
+          ) : null
         )}
 
         {!user ? (
