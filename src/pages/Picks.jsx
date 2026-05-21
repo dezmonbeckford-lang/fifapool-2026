@@ -8,6 +8,17 @@ import { useLoadGuard } from '../lib/useLoadGuard.jsx'
 import { getCached, setCached, bustCache } from '../lib/dataCache'
 import './Picks.css'
 
+function getDraftKey(userId) { return `picks-draft-${userId}` }
+function saveDraft(userId, groupPicks, wildcardPicks) {
+  try { localStorage.setItem(getDraftKey(userId), JSON.stringify({ groupPicks, wildcardPicks })) } catch {}
+}
+function loadDraft(userId) {
+  try { const d = localStorage.getItem(getDraftKey(userId)); return d ? JSON.parse(d) : null } catch { return null }
+}
+function clearDraft(userId) {
+  try { localStorage.removeItem(getDraftKey(userId)) } catch {}
+}
+
 export default function Picks() {
   const { user } = useAuth()
   const wildcardRef = useRef(null)
@@ -21,9 +32,12 @@ export default function Picks() {
     return init
   }
 
+  // Restore draft from localStorage if available (survives crashes and reloads)
+  const draft = user?.id ? loadDraft(user.id) : null
+
   const [locked, setLocked] = useState(cached?.locked || false)
-  const [groupPicks, setGroupPicks] = useState(cached?.groupPicks || emptyGroupPicks())
-  const [wildcardPicks, setWildcardPicks] = useState(cached?.wildcardPicks || [])
+  const [groupPicks, setGroupPicks] = useState(draft?.groupPicks || cached?.groupPicks || emptyGroupPicks())
+  const [wildcardPicks, setWildcardPicks] = useState(draft?.wildcardPicks || cached?.wildcardPicks || [])
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
@@ -36,6 +50,11 @@ export default function Picks() {
     if (user?.id) loadData()
     return () => { mountedRef.current = false }
   }, [user?.id])
+
+  // Auto-save picks to localStorage draft whenever they change
+  useEffect(() => {
+    if (user?.id && !locked) saveDraft(user.id, groupPicks, wildcardPicks)
+  }, [groupPicks, wildcardPicks])
 
   async function loadData() {
     if (!user?.id) return  // guard: retry button can fire before auth resolves
@@ -189,6 +208,7 @@ export default function Picks() {
       setSaveStatus('')
       setSaved(true)
       bustCache(cacheKey)  // force fresh load next visit
+      clearDraft(user.id)  // picks are saved — no need to keep the draft
       setTimeout(() => setSaved(false), 4000)
     } catch (err) {
       setError(err.message || 'Failed to save picks. Try again.')

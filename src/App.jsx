@@ -39,7 +39,7 @@ export default function App() {
     startKeepAlive()
 
     let hiddenAt = null
-    const RELOAD_AFTER_MS = 5 * 60 * 1000 // 5 minutes away → full reload
+    const RELOAD_AFTER_MS = 30 * 60 * 1000 // 30 minutes away → full reload (auth token lasts 1hr)
 
     function onVisibilityChange() {
       if (document.visibilityState === 'hidden') {
@@ -55,7 +55,8 @@ export default function App() {
           return
         }
 
-        // Short absence — just refresh auth token and resume ping
+        // Short/medium absence — just refresh auth token and resume ping
+        // Don't reload — would wipe any unsaved picks the user was working on
         supabase.auth.getSession()
         startKeepAlive()
       }
