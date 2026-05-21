@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import { supabase } from './lib/supabase'
 import { startKeepAlive, stopKeepAlive } from './lib/keepAlive'
+import { usePullToRefresh } from './lib/usePullToRefresh'
 import ErrorBoundary from './components/ErrorBoundary'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
@@ -35,6 +36,8 @@ function AdminRoute({ children }) {
 }
 
 export default function App() {
+  usePullToRefresh()
+
   useEffect(() => {
     startKeepAlive()
 
