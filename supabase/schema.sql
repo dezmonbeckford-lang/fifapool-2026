@@ -214,58 +214,86 @@ language plpgsql
 security definer
 as $$
 declare
-  u record;
-  gp record;
-  gr record;
-  wa_teams text[];
-  wp_team text;
+  u         record;
+  gp        record;
+  gr        record;
+  wa_teams  text[];
+  wp_team   text;
+  top2_teams text[];
   new_group_pts int;
-  wp_pts int;
+  wp_pts    int;
 begin
   -- Collect real wildcard advancers
   select array_agg(team) into wa_teams from wildcard_advancers;
   if wa_teams is null then wa_teams := '{}'; end if;
 
+  -- Collect all teams that finished top-2 in any group
+  select array_agg(team) into top2_teams
+    from (
+      select winner as team from group_results
+      union all
+      select runner_up as team from group_results
+    ) t;
+  if top2_teams is null then top2_teams := '{}'; end if;
+
   -- Loop over every user
   for u in select id from profiles loop
     new_group_pts := 0;
 
-    -- Score group picks against group results
+    -- ── Group picks ──────────────────────────────────────────────
+    -- Points based on how the picked team actually advanced,
+    -- not whether it landed in the predicted slot.
     for gr in select * from group_results loop
       select * into gp
         from group_picks
        where user_id = u.id and group_id = gr.group_id;
 
       if found then
-        -- Winner correct?
-        if gp.winner = gr.winner then
-          new_group_pts := new_group_pts + 3; -- picked correct team as winner
-          new_group_pts := new_group_pts + 2; -- winner bonus (nailed them specifically as 1st)
-        elsif gp.winner = gr.runner_up then
-          new_group_pts := new_group_pts + 3; -- picked runner-up team, just as wrong slot
+        -- Score the "winner" pick
+        if gp.winner is not null then
+          if gp.winner = gr.winner then
+            -- Exact 1st-place match: 3 + 1 bonus
+            new_group_pts := new_group_pts + 4;
+          elsif gp.winner = gr.runner_up then
+            -- Team finished top-2, wrong slot
+            new_group_pts := new_group_pts + 3;
+          elsif gp.winner = any(wa_teams) then
+            -- Team advanced but as a wildcard
+            new_group_pts := new_group_pts + 2;
+          end if;
         end if;
 
-        -- Runner-up correct?
-        if gp.runner_up = gr.runner_up then
-          new_group_pts := new_group_pts + 3;
-        elsif gp.runner_up = gr.winner then
-          new_group_pts := new_group_pts + 3; -- had the team right, wrong slot
+        -- Score the "runner_up" pick
+        if gp.runner_up is not null then
+          if gp.runner_up = gr.runner_up then
+            -- Exact 2nd-place match: 3 pts
+            new_group_pts := new_group_pts + 3;
+          elsif gp.runner_up = gr.winner then
+            -- Team finished top-2, wrong slot
+            new_group_pts := new_group_pts + 3;
+          elsif gp.runner_up = any(wa_teams) then
+            -- Team advanced but as a wildcard
+            new_group_pts := new_group_pts + 2;
+          end if;
         end if;
       end if;
     end loop;
 
-    -- Score wildcard picks
+    -- ── Wildcard picks ───────────────────────────────────────────
+    -- 3 pts if team finished top-2, 2 pts if it advanced as wildcard
     wp_pts := 0;
     for wp_team in
       select team from wildcard_picks where user_id = u.id
     loop
-      if wp_team = any(wa_teams) then
+      if wp_team = any(top2_teams) then
+        wp_pts := wp_pts + 3;
+      elsif wp_team = any(wa_teams) then
         wp_pts := wp_pts + 2;
       end if;
     end loop;
     new_group_pts := new_group_pts + wp_pts;
 
-    -- Upsert scores
+    -- ── Upsert scores ────────────────────────────────────────────
     insert into scores (user_id, group_points, bracket_points, total_points, updated_at)
     values (u.id, new_group_pts, 0, new_group_pts, now())
     on conflict (user_id) do update
