@@ -557,13 +557,14 @@ const NEXT_ROUND_MAP = { R32: 'R16', R16: 'QF', QF: 'SF', SF: 'THIRD', THIRD: 'F
 
 // ── Bracket Results ─────────────────────────────────────────────
 function BracketResultsTab({ onMsg }) {
-  const [matches,     setMatches]     = useState([])
-  const [picks,       setPicks]       = useState({})   // { matchId: winner } — pending local picks
-  const [finalScore,  setFinalScore]  = useState({ s1: '', s2: '' })
-  const [loading,     setLoading]     = useState(true)
-  const [saving,      setSaving]      = useState(false)
-  const [resetting,   setResetting]   = useState(false)
-  const [activeRound, setActiveRound] = useState('R32')
+  const [matches,      setMatches]      = useState([])
+  const [picks,        setPicks]        = useState({})   // { matchId: winner } — pending local picks
+  const [finalScores,  setFinalScores]  = useState({})   // { matchId: { s1, s2 } }
+  const [loading,      setLoading]      = useState(true)
+  const [savingMatch,  setSavingMatch]  = useState(null) // matchId currently saving
+  const [advancing,    setAdvancing]    = useState(false)
+  const [resetting,    setResetting]    = useState(false)
+  const [activeRound,  setActiveRound]  = useState('R32')
 
   useEffect(() => { loadMatches() }, [])
 
@@ -590,7 +591,6 @@ function BracketResultsTab({ onMsg }) {
         .update({ actual_winner: null, result_entered: false, actual_score1: null, actual_score2: null, team1: null, team2: null })
         .in('round', ['R16', 'QF', 'SF', 'THIRD', 'FINAL'])
       if (e1) throw e1
-      // Keep R32 teams but clear results
       const { error: e2 } = await supabase
         .from('bracket_matches')
         .update({ actual_winner: null, result_entered: false })
@@ -599,7 +599,7 @@ function BracketResultsTab({ onMsg }) {
       const { error: e3 } = await supabase.rpc('reset_bracket_scores')
       if (e3) throw e3
       setPicks({})
-      setFinalScore({ s1: '', s2: '' })
+      setFinalScores({})
       setActiveRound('R32')
       onMsg('✓ All results cleared and scores reset.')
       loadMatches()
@@ -610,43 +610,48 @@ function BracketResultsTab({ onMsg }) {
     }
   }
 
-  // Save all picks for the current round, then propagate teams to the next round
-  async function saveRound() {
-    const roundMatches = matches.filter(m => m.round === activeRound)
-    const unpicked = roundMatches.filter(m => !m.result_entered && !picks[m.id])
-    if (unpicked.length > 0) {
-      onMsg(`Pick all ${unpicked.length} remaining winner(s) first.`)
-      return
-    }
-    // For Final: require scores
-    if (activeRound === 'FINAL') {
-      if (finalScore.s1 === '' || finalScore.s2 === '') {
+  // Save a single match result immediately — updates scores right away
+  async function saveMatch(match) {
+    const winner = picks[match.id]
+    if (!winner) return
+    if (match.is_final) {
+      const fs = finalScores[match.id] || {}
+      if (fs.s1 === '' || fs.s1 == null || fs.s2 === '' || fs.s2 == null) {
         onMsg('Enter the final score before saving.')
         return
       }
     }
 
-    setSaving(true)
+    setSavingMatch(match.id)
     try {
-      // 1. Save results for every match in this round
-      for (const match of roundMatches) {
-        if (match.result_entered) continue   // already saved, skip
-        const winner = picks[match.id]
-        if (!winner) continue
-
-        const payload = { actual_winner: winner, result_entered: true }
-        if (match.is_final) {
-          payload.actual_score1 = Number(finalScore.s1)
-          payload.actual_score2 = Number(finalScore.s2)
-        }
-        const { error } = await supabase.from('bracket_matches').update(payload).eq('id', match.id)
-        if (error) throw new Error(`Save match ${match.match_number}: ${error.message}`)
-
-        // Fire-and-forget scoring
-        supabase.rpc('score_bracket_match', { match_id: match.id })
+      const payload = { actual_winner: winner, result_entered: true }
+      if (match.is_final) {
+        const fs = finalScores[match.id] || {}
+        payload.actual_score1 = Number(fs.s1)
+        payload.actual_score2 = Number(fs.s2)
       }
+      const { error } = await supabase.from('bracket_matches').update(payload).eq('id', match.id)
+      if (error) throw error
 
-      // 2. Propagate winners into next round's team slots
+      // Score all players who picked this match
+      supabase.rpc('score_bracket_match', { match_id: match.id })
+
+      // Clear the pending pick for this match
+      setPicks(prev => { const n = { ...prev }; delete n[match.id]; return n })
+
+      await loadMatches()
+      onMsg(`✓ ${winner} saved — scores updated!`)
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    } finally {
+      setSavingMatch(null)
+    }
+  }
+
+  // Once ALL matches in the round are saved, propagate teams to next round
+  async function advanceRound() {
+    setAdvancing(true)
+    try {
       const freshRes = await supabase.from('bracket_matches').select('*')
         .order('round_order').order('match_number')
       const fresh = freshRes.data || []
@@ -657,7 +662,7 @@ function BracketResultsTab({ onMsg }) {
         const currentRoundMatches = fresh.filter(m => m.round === activeRound)
 
         for (const match of currentRoundMatches) {
-          const winner = match.actual_winner || picks[match.id]
+          const winner = match.actual_winner
           if (!winner) continue
 
           const next = getNextSlot(match.round, match.match_number)
@@ -667,7 +672,7 @@ function BracketResultsTab({ onMsg }) {
             if (nextMatch) updates.push({ id: nextMatch.id, slot: slotKey, team: winner })
           }
 
-          // SF: send loser to Third place
+          // SF losers → Third Place
           if (match.round === 'SF') {
             const loser      = match.team1 === winner ? match.team2 : match.team1
             const thirdSlot  = match.match_number === 1 ? 'team1' : 'team2'
@@ -676,24 +681,19 @@ function BracketResultsTab({ onMsg }) {
           }
         }
 
-        // Apply all team propagations
         for (const u of updates) {
           const { error } = await supabase.from('bracket_matches').update({ [u.slot]: u.team }).eq('id', u.id)
-          if (error) throw new Error(`Initialize ${nextRound}: ${error.message}`)
+          if (error) throw error
         }
+
+        await loadMatches()
+        setActiveRound(nextRound)
+        onMsg(`✓ ${ROUND_LABELS[nextRound]} is ready!`)
       }
-
-      // 3. Clear pending picks, reload, advance to next round
-      setPicks({})
-      setFinalScore({ s1: '', s2: '' })
-      await loadMatches()
-      if (nextRound) setActiveRound(nextRound)
-      onMsg(`✓ ${ROUND_LABELS[activeRound]} saved${nextRound ? ` — ${ROUND_LABELS[nextRound]} is ready!` : ' — bracket complete!'}`)
-
     } catch (err) {
       onMsg(`Error: ${err.message}`)
     } finally {
-      setSaving(false)
+      setAdvancing(false)
     }
   }
 
@@ -712,9 +712,9 @@ function BracketResultsTab({ onMsg }) {
   const byRound = {}
   RESULT_ROUND_ORDER.forEach(r => { byRound[r] = matches.filter(m => m.round === r) })
 
-  const savedCount  = r => (byRound[r] || []).filter(m => m.result_entered).length
-  const totalCount  = r => (byRound[r] || []).length
-  const isComplete  = r => totalCount(r) > 0 && savedCount(r) === totalCount(r)
+  const savedCount   = r => (byRound[r] || []).filter(m => m.result_entered).length
+  const totalCount   = r => (byRound[r] || []).length
+  const isComplete   = r => totalCount(r) > 0 && savedCount(r) === totalCount(r)
   const isAccessible = r => {
     if (r === 'R32') return true
     const pr = PREV_ROUND_MAP[r]
@@ -726,12 +726,7 @@ function BracketResultsTab({ onMsg }) {
   const prevRound     = activeIdx > 0 ? activeRounds[activeIdx - 1] : null
   const roundMatches  = byRound[activeRound] || []
   const nextRoundName = NEXT_ROUND_MAP[activeRound]
-
-  // Count how many of the current round have been picked (saved OR pending local pick)
-  const pickedCount = roundMatches.filter(m => m.result_entered || picks[m.id]).length
-  const allPicked   = pickedCount === roundMatches.length && roundMatches.length > 0
-  const isFinalRound = activeRound === 'FINAL'
-  const saveReady   = allPicked && (!isFinalRound || (finalScore.s1 !== '' && finalScore.s2 !== ''))
+  const roundComplete = isComplete(activeRound)
 
   return (
     <div className="admin-results-page">
@@ -740,7 +735,9 @@ function BracketResultsTab({ onMsg }) {
       <div className="results-header-row" style={{ marginBottom: 16 }}>
         <div>
           <h2 style={{ fontSize: 18, fontWeight: 700 }}>Bracket Results</h2>
-          <p style={{ fontSize: 13, color: 'var(--text2)' }}>Pick winners, then save to unlock the next round.</p>
+          <p style={{ fontSize: 13, color: 'var(--text2)' }}>
+            Pick a winner → Save — scores update instantly. When all saved, advance to next round.
+          </p>
         </div>
         <button
           className="btn btn-sm"
@@ -779,8 +776,12 @@ function BracketResultsTab({ onMsg }) {
             match={match}
             pendingWinner={picks[match.id] || null}
             onPick={winner => setPicks(prev => ({ ...prev, [match.id]: winner }))}
-            finalScore={match.is_final ? finalScore : null}
-            onFinalScore={match.is_final ? setFinalScore : null}
+            finalScore={match.is_final ? (finalScores[match.id] || { s1: '', s2: '' }) : null}
+            onFinalScore={match.is_final
+              ? (updater) => setFinalScores(prev => ({ ...prev, [match.id]: typeof updater === 'function' ? updater(prev[match.id] || { s1: '', s2: '' }) : updater }))
+              : null}
+            onSave={() => saveMatch(match)}
+            isSaving={savingMatch === match.id}
           />
         ))}
       </div>
@@ -794,45 +795,53 @@ function BracketResultsTab({ onMsg }) {
         ) : <div />}
       </div>
 
-      {/* Save bar — fixed at bottom, same as BracketPicks */}
+      {/* Save bar — progress + advance button when all saved */}
       <div className="bracket-save-bar">
         <div className="bsb-progress">
-          {pickedCount}/{roundMatches.length} picked
-          {allPicked && <span className="bsb-all-done"> ✓ All picked!</span>}
+          {savedCount(activeRound)}/{roundMatches.length} saved
+          {roundComplete && <span className="bsb-all-done"> ✓ All saved!</span>}
         </div>
-        <button
-          className={`btn btn-lg btn-full${saveReady ? ' btn-success' : ' btn-primary'}`}
-          onClick={saveRound}
-          disabled={saving || isComplete(activeRound)}
-        >
-          {saving
-            ? 'Saving…'
-            : isComplete(activeRound)
-              ? `✓ ${ROUND_LABELS[activeRound]} Complete`
-              : saveReady
-                ? `💾 Save & Initialize ${nextRoundName ? ROUND_LABELS[nextRoundName] : 'Final'}`
-                : `${pickedCount}/${roundMatches.length} — Pick all winners to save`}
-        </button>
+        {roundComplete && nextRoundName ? (
+          <button
+            className="btn btn-lg btn-full btn-success"
+            onClick={advanceRound}
+            disabled={advancing}
+          >
+            {advancing ? 'Initializing…' : `⚡ Advance to ${ROUND_LABELS[nextRoundName]}`}
+          </button>
+        ) : roundComplete && !nextRoundName ? (
+          <div style={{ textAlign: 'center', fontWeight: 700, color: 'var(--accent)', padding: '10px 0' }}>
+            🏆 Bracket Complete!
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text2)', padding: '6px 0' }}>
+            Pick a winner on each match card, then tap Save Result
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
 // ── AdminResultCard ──────────────────────────────────────────────
-function AdminResultCard({ match, pendingWinner, onPick, finalScore, onFinalScore }) {
+function AdminResultCard({ match, pendingWinner, onPick, onSave, isSaving, finalScore, onFinalScore }) {
   const { team1, team2, result_entered, actual_winner, is_final } = match
   const displayWinner = result_entered ? actual_winner : pendingWinner
   const bothKnown = !!(team1 && team2)
+  const canSave = !result_entered && pendingWinner && bothKnown &&
+    (!is_final || (finalScore?.s1 !== '' && finalScore?.s1 != null && finalScore?.s2 !== '' && finalScore?.s2 != null))
 
   return (
-    <div className={`bm-card card${result_entered ? ' correct' : pendingWinner ? ' wrong' : ''}`}
-         style={pendingWinner && !result_entered ? { borderColor: 'var(--accent)' } : {}}>
+    <div
+      className={`bm-card card${result_entered ? ' correct' : ''}`}
+      style={pendingWinner && !result_entered ? { borderColor: 'var(--accent)' } : {}}
+    >
       <div className="bm-header">
         <span className="bm-pts">Match {match.match_number}</span>
         {result_entered
           ? <span className="bm-result-badge correct">✓ Saved</span>
-          : displayWinner
-            ? <span className="bm-result-badge" style={{ color: 'var(--accent)' }}>⭐ {displayWinner}</span>
+          : pendingWinner
+            ? <span className="bm-result-badge" style={{ color: 'var(--accent)' }}>⭐ {pendingWinner}</span>
             : null}
       </div>
 
@@ -850,7 +859,7 @@ function AdminResultCard({ match, pendingWinner, onPick, finalScore, onFinalScor
         ) : (
           <div className="tpb tpb-tbd">
             <span className="tpb-flag">⏳</span>
-            <span className="tpb-name">Previous round not saved yet</span>
+            <span className="tpb-name">Previous round not advanced yet</span>
           </div>
         )}
 
@@ -869,7 +878,7 @@ function AdminResultCard({ match, pendingWinner, onPick, finalScore, onFinalScor
         ) : (
           <div className="tpb tpb-tbd">
             <span className="tpb-flag">⏳</span>
-            <span className="tpb-name">Previous round not saved yet</span>
+            <span className="tpb-name">Previous round not advanced yet</span>
           </div>
         )}
       </div>
@@ -900,6 +909,18 @@ function AdminResultCard({ match, pendingWinner, onPick, finalScore, onFinalScor
         <div style={{ textAlign: 'center', color: 'var(--text2)', fontSize: 13, marginTop: 8 }}>
           {team1} {match.actual_score1} – {match.actual_score2} {team2}
         </div>
+      )}
+
+      {/* Per-match save button */}
+      {canSave && (
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: 12, width: '100%' }}
+          onClick={onSave}
+          disabled={isSaving}
+        >
+          {isSaving ? 'Saving…' : `💾 Save Result`}
+        </button>
       )}
     </div>
   )
