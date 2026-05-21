@@ -10,7 +10,7 @@
  *     supabase.from('table').select('*').abortSignal(signal)
  *   )
  */
-export async function readWithRetry(fn, { timeoutMs = 7000 } = {}) {
+export async function readWithRetry(fn, { timeoutMs = 12000 } = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController()
     const tid = setTimeout(() => controller.abort(), timeoutMs)

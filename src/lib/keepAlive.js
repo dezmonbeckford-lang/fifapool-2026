@@ -1,8 +1,8 @@
 /**
- * keepAlive — fires a lightweight ping to Supabase every 4 minutes.
+ * keepAlive — fires a lightweight ping to Supabase every 3 minutes.
  *
  * Supabase free tier lets the connection pool go cold after ~5 min of silence.
- * This keeps it warm so the first query after navigating to any page is fast.
+ * Pinging every 3 minutes keeps it consistently warm so page loads are fast.
  *
  * Call startKeepAlive() once in App.jsx on mount.
  */
@@ -13,7 +13,7 @@ let timer = null
 export function startKeepAlive() {
   if (timer) return
   ping() // warm up immediately on first load
-  timer = setInterval(ping, 4 * 60 * 1000) // every 4 minutes
+  timer = setInterval(ping, 3 * 60 * 1000) // every 3 minutes
 }
 
 export function stopKeepAlive() {
