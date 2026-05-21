@@ -212,6 +212,7 @@ export default function Picks() {
       setTimeout(() => setSaved(false), 4000)
     } catch (err) {
       setError(err.message || 'Failed to save picks. Try again.')
+      return false
     } finally {
       setSaving(false)
       setSaveStatus('')
@@ -284,13 +285,16 @@ export default function Picks() {
 
           <div className="step1-actions">
             {!locked && (
-              <button className="btn btn-outline btn-lg" onClick={handleSave} disabled={saving}>
-                {saving ? (saveStatus || 'Saving…') : '💾 Save Progress'}
-              </button>
-            )}
-            {allGroupsDone && (
-              <button className="btn btn-primary btn-lg" onClick={goToWildcards}>
-                Next: Wildcard Picks →
+              <button
+                className={`btn btn-lg btn-full${allGroupsDone ? ' btn-primary' : ' btn-outline'}`}
+                onClick={allGroupsDone ? async () => { const ok = await handleSave(); if (ok !== false) goToWildcards() } : handleSave}
+                disabled={saving}
+              >
+                {saving
+                  ? (saveStatus || 'Saving…')
+                  : allGroupsDone
+                    ? '💾 Save & Continue →'
+                    : '💾 Save Progress'}
               </button>
             )}
           </div>
