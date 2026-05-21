@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
-import { startKeepAlive } from './lib/keepAlive'
+import { supabase } from './lib/supabase'
+import { startKeepAlive, stopKeepAlive } from './lib/keepAlive'
+import ErrorBoundary from './components/ErrorBoundary'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -31,29 +33,53 @@ function AdminRoute({ children }) {
 }
 
 export default function App() {
-  useEffect(() => { startKeepAlive() }, [])
+  useEffect(() => {
+    startKeepAlive()
+
+    // When the user returns to the tab/app after being away:
+    // 1. Refresh the Supabase auth session so expired tokens are renewed
+    // 2. Resume the keep-alive ping immediately
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        // This triggers onAuthStateChange(TOKEN_REFRESHED) if the token expired
+        supabase.auth.getSession()
+        startKeepAlive()
+      } else {
+        // Pause ping while backgrounded — browser throttles timers anyway
+        stopKeepAlive()
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      stopKeepAlive()
+    }
+  }, [])
 
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Navbar />
-        <main style={{ flex: 1 }}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            <Route path="/profile" element={<Protected><Profile /></Protected>} />
-            <Route path="/picks" element={<Protected><Picks /></Protected>} />
-            <Route path="/bracket" element={<Protected><BracketPicks /></Protected>} />
-            <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-            <Route path="/player/:userId" element={<Protected><PlayerPicks /></Protected>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-      </BrowserRouter>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Navbar />
+          <main style={{ flex: 1 }}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/profile" element={<Protected><Profile /></Protected>} />
+              <Route path="/picks" element={<Protected><Picks /></Protected>} />
+              <Route path="/bracket" element={<Protected><BracketPicks /></Protected>} />
+              <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+              <Route path="/player/:userId" element={<Protected><PlayerPicks /></Protected>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

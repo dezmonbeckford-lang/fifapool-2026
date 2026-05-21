@@ -22,17 +22,32 @@ export default function Leaderboard() {
     mountedRef.current = true
     loadLeaderboard()
 
-    // Unique channel name per mount prevents stale subscriptions accumulating
-    const channelName = `leaderboard-${Date.now()}`
-    const channel = supabase
-      .channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' },
-        () => { if (mountedRef.current) loadLeaderboard() })
-      .subscribe()
+    // Subscribe to score changes
+    let channel = subscribe()
+
+    // When user returns to the tab, reload data and reconnect the subscription
+    // (connections die when the browser is backgrounded)
+    function onVisible() {
+      if (document.visibilityState === 'visible' && mountedRef.current) {
+        loadLeaderboard()
+        supabase.removeChannel(channel)
+        channel = subscribe()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       mountedRef.current = false
+      document.removeEventListener('visibilitychange', onVisible)
       supabase.removeChannel(channel)
+    }
+
+    function subscribe() {
+      return supabase
+        .channel(`leaderboard-${Date.now()}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' },
+          () => { if (mountedRef.current) loadLeaderboard() })
+        .subscribe()
     }
   }, [])
 
