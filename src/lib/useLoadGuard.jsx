@@ -27,10 +27,10 @@ export function useLoadGuard(loading, retry, { stuckMs = 8000 } = {}) {
       <div className="card" style={{ textAlign: 'center', padding: 32, maxWidth: 360 }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⚽</div>
         <p style={{ color: 'var(--text2)', marginBottom: 8, fontWeight: 600 }}>
-          Server is warming up…
+          Taking longer than usual…
         </p>
         <p style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 20 }}>
-          Supabase is waking from sleep. This only happens on the first load.
+          Slow connection or server hiccup. Tap retry to try again.
         </p>
         <button className="btn btn-primary" onClick={() => { setIsStuck(false); retry() }}>
           Retry
