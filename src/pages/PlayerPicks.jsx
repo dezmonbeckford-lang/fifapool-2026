@@ -40,7 +40,7 @@ export default function PlayerPicks() {
     try {
       const [profileRes, settingsRes, gpRes, wpRes, bpRes, matchesRes, scoreRes] = await Promise.all([
         readWithRetry(sig => supabase.from('profiles').select('id, display_name').eq('id', userId).single().abortSignal(sig)),
-        readWithRetry(sig => supabase.from('settings').select('phase, group_picks_locked').single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings').select('phase, group_picks_locked, bracket_picks_locked').single().abortSignal(sig)),
         readWithRetry(sig => supabase.from('group_picks').select('group_id, winner, runner_up').eq('user_id', userId).abortSignal(sig)),
         readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', userId).abortSignal(sig)),
         readWithRetry(sig => supabase.from('bracket_picks').select('match_id, picked_winner, tiebreaker_score1, tiebreaker_score2').eq('user_id', userId).abortSignal(sig)),
@@ -109,10 +109,11 @@ export default function PlayerPicks() {
     </div>
   )
 
-  const groupPicksLocked = settings?.group_picks_locked
-  const bracketActive    = bracketMatches.length > 0
-  const isOwnProfile     = user?.id === userId
-  const displayName      = player.display_name || player.email?.split('@')[0] || 'Player'
+  const groupPicksLocked   = settings?.group_picks_locked
+  const bracketPicksLocked = settings?.bracket_picks_locked
+  const bracketActive      = bracketMatches.length > 0
+  const isOwnProfile       = user?.id === userId
+  const displayName        = player.display_name || player.email?.split('@')[0] || 'Player'
 
   // Points breakdown
   const groupPts   = score?.group_points   ?? 0
@@ -143,28 +144,46 @@ export default function PlayerPicks() {
           <div className="pp-avatar">{displayName.charAt(0).toUpperCase()}</div>
           <div className="pp-info">
             <h1 className="pp-name">{displayName}{isOwnProfile && <span className="you-tag">you</span>}</h1>
-            <div className="pp-score-row">
-              <div className="pp-score-item">
-                <span className="pp-score-val">{totalPts}</span>
-                <span className="pp-score-label">Total pts</span>
+            {groupPicksLocked ? (
+              <div className="pp-score-row">
+                <div className="pp-score-item">
+                  <span className="pp-score-val">{totalPts}</span>
+                  <span className="pp-score-label">Total pts</span>
+                </div>
+                <div className="pp-score-sep">·</div>
+                <div className="pp-score-item">
+                  <span className="pp-score-val">{groupPts}</span>
+                  <span className="pp-score-label">Group</span>
+                </div>
+                <div className="pp-score-sep">·</div>
+                <div className="pp-score-item">
+                  <span className="pp-score-val">{bracketPts}</span>
+                  <span className="pp-score-label">Bracket</span>
+                </div>
               </div>
-              <div className="pp-score-sep">·</div>
-              <div className="pp-score-item">
-                <span className="pp-score-val">{groupPts}</span>
-                <span className="pp-score-label">Group</span>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>
+                Picks hidden until the group stage deadline
               </div>
-              <div className="pp-score-sep">·</div>
-              <div className="pp-score-item">
-                <span className="pp-score-val">{bracketPts}</span>
-                <span className="pp-score-label">Bracket</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── Picks content ── */}
-      <>
+      {/* ── Picks not yet visible ── */}
+      {!groupPicksLocked && (
+        <div className="pp-section">
+          <div className="pp-locked-banner card">
+            <div className="pp-locked-icon">🔒</div>
+            <h2>Picks Not Visible Yet</h2>
+            <p>All picks are hidden until the admin locks the group stage. Check back once the tournament kicks off!</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Picks content (group picks locked or more) ── */}
+      {groupPicksLocked && (
+        <>
           {/* Tab bar — only show if bracket is also active */}
           {bracketActive && (
             <div className="pp-tabs">
@@ -180,7 +199,7 @@ export default function PlayerPicks() {
                 onClick={() => setActiveTab('bracket')}
               >
                 🏆 Bracket Picks
-                <span className="pp-tab-count">{bracketPickCount}/{bracketMatches.length}</span>
+                <span className="pp-tab-count">{bracketPicksLocked ? `${bracketPickCount}/${bracketMatches.length}` : '🔒'}</span>
               </button>
             </div>
           )}
@@ -257,7 +276,14 @@ export default function PlayerPicks() {
           {/* ── BRACKET PICKS TAB ── */}
           {activeTab === 'bracket' && bracketActive && (
             <div className="pp-section">
-              {bracketPickCount === 0 ? (
+              {!bracketPicksLocked ? (
+                /* Bracket picks locked message */
+                <div className="pp-locked-banner card">
+                  <div className="pp-locked-icon">🏆</div>
+                  <h2>Bracket Picks Hidden</h2>
+                  <p>Bracket picks will be revealed once the admin locks the bracket — right before the Round of 32 kicks off.</p>
+                </div>
+              ) : bracketPickCount === 0 ? (
                 <div className="pp-empty card">
                   <span>🏆</span>
                   <p>This player hasn't submitted any bracket picks yet.</p>
@@ -343,7 +369,8 @@ export default function PlayerPicks() {
               )}
             </div>
           )}
-      </>
+        </>
+      )}
     </div>
   )
 }

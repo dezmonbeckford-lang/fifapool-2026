@@ -43,7 +43,7 @@ export default function Leaderboard() {
       const [profilesRes, scoresRes, settingsRes] = await Promise.all([
         readWithRetry(sig => supabase.from('profiles').select('id, display_name').abortSignal(sig)),
         readWithRetry(sig => supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(sig)),
-        readWithRetry(sig => supabase.from('settings').select('group_picks_locked, phase').single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings').select('group_picks_locked, bracket_picks_locked, phase').single().abortSignal(sig)),
       ])
 
       if (!mountedRef.current) return  // unmounted while fetching — bail out
@@ -150,7 +150,11 @@ export default function Leaderboard() {
                     <Link
                       to={`/player/${entry.user_id}`}
                       className="lb-player-link"
-                      title={settings?.group_picks_locked ? 'View picks' : 'Picks hidden until locked'}
+                      title={
+                        settings?.bracket_picks_locked ? 'View full picks' :
+                        settings?.group_picks_locked   ? 'View group picks' :
+                        'Picks hidden until group stage locks'
+                      }
                     >
                       {entry.profiles?.display_name || 'Player'}
                     </Link>
@@ -164,8 +168,10 @@ export default function Leaderboard() {
               )
             })}
           </div>
-          {settings?.group_picks_locked && (
+          {settings?.group_picks_locked ? (
             <div className="lb-picks-tip">👁 Tap a player's name to see their picks</div>
+          ) : (
+            <div className="lb-picks-tip" style={{ opacity: 0.6 }}>🔒 Picks hidden until group stage deadline</div>
           )}
         </div>
       )}

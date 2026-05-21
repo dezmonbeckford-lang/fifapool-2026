@@ -387,6 +387,19 @@
   border-radius: 8px;
 }
 
+/* ── Locked banner ── */
+.pp-locked-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 24px;
+  gap: 12px;
+}
+.pp-locked-icon { font-size: 40px; }
+.pp-locked-banner h2 { font-size: 18px; font-weight: 700; margin: 0; }
+.pp-locked-banner p  { font-size: 14px; color: var(--text2); max-width: 320px; line-height: 1.5; margin: 0; }
+
 /* ── Mobile ── */
 @media (max-width: 480px) {
   .pp-hero { padding: 16px; gap: 12px; }
