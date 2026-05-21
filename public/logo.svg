@@ -1,12 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
-  <circle cx="100" cy="100" r="100" fill="#3B6EA5"/>
+  <circle cx="100" cy="100" r="100" fill="#1a1a1a"/>
+  <circle cx="100" cy="100" r="96" fill="none" stroke="#444" stroke-width="2"/>
   <text
     x="100"
     y="108"
     font-family="Arial Black, Arial, sans-serif"
     font-weight="900"
     font-size="62"
-    fill="white"
+    fill="#ffffff"
     text-anchor="middle"
     letter-spacing="2"
   >FIFA</text>
@@ -16,7 +17,7 @@
     font-family="Arial Black, Arial, sans-serif"
     font-weight="700"
     font-size="30"
-    fill="white"
+    fill="#aaaaaa"
     text-anchor="middle"
     letter-spacing="6"
   >POOL</text>
