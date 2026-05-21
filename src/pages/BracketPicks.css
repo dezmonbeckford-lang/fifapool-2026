@@ -283,6 +283,39 @@
   color: var(--text2);
   text-align: center;
 }
+.bsb-all-done { color: var(--success); font-weight: 700; }
+
+/* Round prev/next navigation */
+.bracket-round-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  margin-bottom: 12px;
+}
+.brn-btn { flex: 1; }
+
+/* Pick badge in match header (shows your pick before result) */
+.bm-pick-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(16,185,129,0.12);
+  color: var(--accent);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Success/confirm button variant */
+.btn-success {
+  background: var(--success);
+  color: #fff;
+  border-color: var(--success);
+}
+.btn-success:hover { background: #16a34a; border-color: #16a34a; }
 
 /* Locked countdown screen */
 .bracket-locked-screen {

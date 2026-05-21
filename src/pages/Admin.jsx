@@ -444,14 +444,14 @@ function BracketSetupTab({ onMsg }) {
   }
 
   async function handleAutoFill() {
-    if (!window.confirm('This fills all 16 R32 matches from your saved group results and wildcard advancers. Continue?')) return
+    if (!window.confirm('This fills all 16 R32 matches from your saved group results and wildcard advancers, and saves them immediately. Continue?')) return
     setSaving(true)
     try {
       await saveWithRetry(async (signal) => {
         const { error } = await supabase.rpc('populate_bracket_teams').abortSignal(signal)
         if (error) throw error
       })
-      onMsg('✓ All 16 R32 matchups filled in from group results + wildcards!')
+      onMsg('✓ Bracket saved! All 16 matchups now have real team names. Users will see them once you open the bracket.')
       loadMatches()
     } catch (err) {
       onMsg(`Error: ${err.message}`)
@@ -466,6 +466,7 @@ function BracketSetupTab({ onMsg }) {
     .filter(m => WILDCARD_SLOTS.includes(m.match_number))
     .every(m => m.team1 && m.team2)
   const needsAutoFill = hasLabels || !wildcardsFilled
+  const bracketReady = initialized && !needsAutoFill
 
   if (loading) return <div className="spinner" />
 
@@ -496,18 +497,22 @@ function BracketSetupTab({ onMsg }) {
           </div>
 
           {/* Auto-fill action */}
-          <div className="card" style={{ padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div className="card" style={{ padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, borderColor: bracketReady ? 'var(--success)' : undefined }}>
             <div>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>🔄 Auto-fill All Matchups</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                {bracketReady ? '✅ Bracket Ready' : '🔄 Auto-fill All Matchups'}
+              </div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>
-                {needsAutoFill
-                  ? 'Fills matches 1–12 from group results and matches 13–16 from your wildcard advancers. Run this after saving group results.'
-                  : '✓ All 16 matchups have real team names.'}
+                {bracketReady
+                  ? 'All 16 R32 matchups have real team names and are saved. Open the bracket when ready.'
+                  : 'Fills matches 1–12 from group results and 13–16 from wildcard advancers. Saves immediately to DB.'}
               </div>
             </div>
-            <button className="btn btn-primary" onClick={handleAutoFill} disabled={saving || !needsAutoFill}>
-              {saving ? 'Filling…' : 'Auto-fill All'}
-            </button>
+            {needsAutoFill && (
+              <button className="btn btn-primary" onClick={handleAutoFill} disabled={saving}>
+                {saving ? 'Filling & Saving…' : '🔄 Auto-fill & Save'}
+              </button>
+            )}
           </div>
 
           {/* All 16 matches — read-only display */}
