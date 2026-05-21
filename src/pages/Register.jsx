@@ -41,7 +41,7 @@ export default function Register() {
           <h1>Check your email</h1>
           <p style={{ color: 'var(--text2)', marginTop: 8 }}>
             We sent a confirmation link to <strong>{email}</strong>.<br />
-            Click it to activate your account, then sign in.
+            Click it to confirm your account — you'll be brought straight to the sign-in page.
           </p>
           <Link to="/login" className="btn btn-primary btn-full" style={{ marginTop: 24 }}>
             Go to sign in →

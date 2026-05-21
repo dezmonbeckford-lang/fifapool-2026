@@ -71,27 +71,48 @@ export function AuthProvider({ children }) {
     }
 
     async function ensureProfile(userId, email, displayName) {
-      try {
-        const { data: existing } = await supabase
-          .from('profiles').select('id').eq('id', userId).single()
-        if (!existing) {
-          await supabase.from('profiles').insert({
-            id: userId,
-            display_name: displayName || email.split('@')[0],
-            email,
-            is_admin: false,
-          })
+      // Retry up to 5 times with increasing delays — handles cold Supabase starts
+      // that happen right after a user clicks an email confirmation link
+      const delays = [0, 1500, 3000, 5000, 8000]
+      for (let i = 0; i < delays.length; i++) {
+        if (delays[i]) await new Promise(r => setTimeout(r, delays[i]))
+        if (!mounted) return
+        try {
+          const { data: existing } = await supabase
+            .from('profiles').select('id').eq('id', userId).single()
+          if (!existing) {
+            const { error: insErr } = await supabase.from('profiles').insert({
+              id: userId,
+              display_name: displayName || email?.split('@')[0] || 'Player',
+              email: email || '',
+              is_admin: false,
+            })
+            if (insErr) throw insErr
+          }
+          return  // success — stop retrying
+        } catch {
+          if (i === delays.length - 1) {
+            // Last attempt failed — profile creation silently dropped,
+            // user can still use the app but may need to refresh
+          }
         }
-      } catch { /* non-fatal */ }
+      }
     }
   }, [])
 
   async function signUp(email, password, displayName) {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    // Redirect to /login after email confirmation — it's a lightweight page
+    // with no DB calls, so the server cold-start doesn't cause a crash there
+    const redirectTo = `${window.location.origin}/login?confirmed=1`
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: redirectTo,
+        data: { display_name: displayName },
+      },
+    })
     if (error) throw error
-    if (data.user && !data.session) {
-      await supabase.auth.updateUser({ data: { display_name: displayName } })
-    }
     return data
   }
 

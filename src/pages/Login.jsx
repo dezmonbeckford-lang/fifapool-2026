@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import './Auth.css'
 
 export default function Login() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const justConfirmed = searchParams.get('confirmed') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -29,10 +31,16 @@ export default function Login() {
     <div className="page-center">
       <div className="auth-card card">
         <div className="auth-header">
-          <span className="auth-icon">⚽</span>
-          <h1>Welcome back</h1>
-          <p>Sign in to your FifaPool account</p>
+          <span className="auth-icon">{justConfirmed ? '✅' : '⚽'}</span>
+          <h1>{justConfirmed ? 'Email confirmed!' : 'Welcome back'}</h1>
+          <p>{justConfirmed ? 'Your account is ready — sign in to make your picks.' : 'Sign in to your FifaPool account'}</p>
         </div>
+
+        {justConfirmed && (
+          <div className="success-msg" style={{ marginBottom: 16 }}>
+            🎉 Account confirmed — sign in below to get started!
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           {error && <div className="error-msg">{error}</div>}
