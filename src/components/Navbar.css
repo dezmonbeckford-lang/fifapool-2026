@@ -4,6 +4,8 @@
   position: sticky;
   top: 0;
   z-index: 100;
+  /* Push navbar below the status bar / notch / Dynamic Island on iOS */
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .navbar-inner {
