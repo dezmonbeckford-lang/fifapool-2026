@@ -32,7 +32,7 @@ export default function Navbar() {
         <div className="navbar-actions">
           {user ? (
             <div className="navbar-user">
-              <Link to="/profile" className="user-name" title="Edit profile">{profile?.display_name ?? user.email.split('@')[0]}</Link>
+              <Link to="/profile" className="user-name" title="Edit profile">{profile?.display_name ?? user.email?.split('@')[0] ?? 'Player'}</Link>
               <button className="btn btn-outline btn-sm" onClick={signOut}>Sign out</button>
             </div>
           ) : (

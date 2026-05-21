@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { saveWithRetry } from '../lib/saveWithRetry'
@@ -7,6 +7,13 @@ import './Auth.css'
 export default function Profile() {
   const { user, profile, refreshProfile } = useAuth()
   const [displayName, setDisplayName] = useState(profile?.display_name || '')
+
+  // Sync input when profile finishes loading (auth resolves before profile on first render)
+  useEffect(() => {
+    if (profile?.display_name && !displayName) {
+      setDisplayName(profile.display_name)
+    }
+  }, [profile?.display_name])
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
   const [saved, setSaved] = useState(false)

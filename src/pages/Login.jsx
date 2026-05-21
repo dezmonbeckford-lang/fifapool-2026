@@ -1,13 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import './Auth.css'
 
 export default function Login() {
-  const { signIn } = useAuth()
+  const { signIn, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const justConfirmed = searchParams.get('confirmed') === '1'
+
+  // If already signed in (e.g. email confirmation auto-logged them in), go home
+  useEffect(() => {
+    if (user) navigate('/', { replace: true })
+  }, [user])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')

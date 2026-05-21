@@ -75,12 +75,8 @@ export default function PlayerPicks() {
       setMatches(matchesRes?.data || [])
     } catch (err) {
       if (!mountedRef.current) return
-      const isAbort = err?.name === 'AbortError' || err?.message?.toLowerCase().includes('abort')
-      if (isAbort) {
-        setLoadError('Server is waking up — tap retry')
-      } else {
-        setNotFound(true)
-      }
+      // Any error here is a network/server problem, not a "not found" — show retry
+      setLoadError('Connection error — tap retry')
     } finally {
       if (mountedRef.current) setLoading(false)
     }

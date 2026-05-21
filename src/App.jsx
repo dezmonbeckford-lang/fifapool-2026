@@ -28,7 +28,9 @@ function AdminRoute({ children }) {
   const { user, profile, loading } = useAuth()
   if (loading) return <div className="page-center"><div className="spinner" /></div>
   if (!user) return <Navigate to="/login" replace />
-  if (profile && !profile.is_admin) return <Navigate to="/" replace />
+  // Wait for profile to load before checking admin status — avoids false-pass when profile is still null
+  if (!profile) return <div className="page-center"><div className="spinner" /></div>
+  if (!profile.is_admin) return <Navigate to="/" replace />
   return children
 }
 

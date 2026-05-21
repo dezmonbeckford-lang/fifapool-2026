@@ -16,7 +16,8 @@ export default function Leaderboard() {
   const [settings, setSettings] = useState(cached?.settings || null)
   const [loading, setLoading]   = useState(!cached)
   const [error, setError]       = useState('')
-  const mountedRef = useRef(true)
+  const mountedRef  = useRef(true)
+  const hasEntries  = useRef(cached?.entries?.length > 0)
 
   useEffect(() => {
     mountedRef.current = true
@@ -84,9 +85,10 @@ export default function Leaderboard() {
 
       setEntries(merged)
       setSettings(settingsData)
+      hasEntries.current = merged.length > 0
       setCached(CACHE_KEY, { entries: merged, settings: settingsData })
     } catch {
-      if (mountedRef.current && !entries.length) setError('Failed to load leaderboard')
+      if (mountedRef.current && !hasEntries.current) setError('Failed to load leaderboard')
     } finally {
       if (mountedRef.current) setLoading(false)
     }

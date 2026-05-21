@@ -587,25 +587,29 @@ function BracketResultsTab({ onMsg }) {
     if (!window.confirm('Reset ALL bracket results? Clears every result and zeroes all bracket points. Cannot be undone.')) return
     setResetting(true)
     try {
-      const { error: e1 } = await supabase
-        .from('bracket_matches')
-        .update({ actual_winner: null, result_entered: false, actual_score1: null, actual_score2: null, team1: null, team2: null })
-        .in('round', ['R16', 'QF', 'SF', 'THIRD', 'FINAL'])
-      if (e1) throw e1
-      const { error: e2 } = await supabase
-        .from('bracket_matches')
-        .update({ actual_winner: null, result_entered: false })
-        .eq('round', 'R32')
-      if (e2) throw e2
-      const { error: e3 } = await supabase.rpc('recalculate_bracket_scores')
-      if (e3) throw e3
+      await saveWithRetry(async (signal) => {
+        const { error: e1 } = await supabase
+          .from('bracket_matches')
+          .update({ actual_winner: null, result_entered: false, actual_score1: null, actual_score2: null, team1: null, team2: null })
+          .in('round', ['R16', 'QF', 'SF', 'THIRD', 'FINAL'])
+          .abortSignal(signal)
+        if (e1) throw e1
+        const { error: e2 } = await supabase
+          .from('bracket_matches')
+          .update({ actual_winner: null, result_entered: false })
+          .eq('round', 'R32')
+          .abortSignal(signal)
+        if (e2) throw e2
+        const { error: e3 } = await supabase.rpc('recalculate_bracket_scores').abortSignal(signal)
+        if (e3) throw e3
+      }, { onRetry: () => onMsg('Server warming up, retrying reset…') })
       setPicks({})
       setFinalScores({})
       setActiveRound('R32')
       onMsg('✓ All results cleared and scores reset.')
       loadMatches()
     } catch (err) {
-      onMsg(`Error: ${err.message}`)
+      onMsg(`Error resetting: ${err.message}`)
     } finally {
       setResetting(false)
     }
@@ -693,8 +697,11 @@ function BracketResultsTab({ onMsg }) {
         }
 
         for (const u of updates) {
-          const { error } = await supabase.from('bracket_matches').update({ [u.slot]: u.team }).eq('id', u.id)
-          if (error) throw error
+          await saveWithRetry(async (signal) => {
+            const { error } = await supabase
+              .from('bracket_matches').update({ [u.slot]: u.team }).eq('id', u.id).abortSignal(signal)
+            if (error) throw error
+          })
         }
 
         await loadMatches()

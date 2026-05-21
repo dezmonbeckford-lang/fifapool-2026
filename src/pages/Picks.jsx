@@ -38,6 +38,7 @@ export default function Picks() {
   }, [user?.id])
 
   async function loadData() {
+    if (!user?.id) return  // guard: retry button can fire before auth resolves
     if (!getCached(cacheKey) && mountedRef.current) setLoading(true)
     try {
       const [settingsRes, gpRes, wpRes] = await Promise.all([
@@ -94,13 +95,17 @@ export default function Picks() {
     if (locked) return
     setGroupPicks(prev => {
       const cur = prev[groupId]
-      return {
+      const next = {
         ...prev,
         [groupId]: {
           winner: cur.winner === team ? '' : team,
           runnerUp: cur.runnerUp === team ? '' : cur.runnerUp,
         },
       }
+      // Remove newly-picked teams from wildcards so a team can't be in both
+      const newlyPicked = new Set(Object.values(next).flatMap(p => [p.winner, p.runnerUp].filter(Boolean)))
+      setWildcardPicks(wc => wc.filter(t => !newlyPicked.has(t)))
+      return next
     })
   }
 
@@ -108,13 +113,17 @@ export default function Picks() {
     if (locked) return
     setGroupPicks(prev => {
       const cur = prev[groupId]
-      return {
+      const next = {
         ...prev,
         [groupId]: {
           runnerUp: cur.runnerUp === team ? '' : team,
           winner: cur.winner === team ? '' : cur.winner,
         },
       }
+      // Remove newly-picked teams from wildcards so a team can't be in both
+      const newlyPicked = new Set(Object.values(next).flatMap(p => [p.winner, p.runnerUp].filter(Boolean)))
+      setWildcardPicks(wc => wc.filter(t => !newlyPicked.has(t)))
+      return next
     })
   }
 

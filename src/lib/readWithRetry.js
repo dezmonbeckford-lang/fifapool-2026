@@ -13,11 +13,18 @@
 export async function readWithRetry(fn, { timeoutMs = 12000 } = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController()
-    const tid = setTimeout(() => controller.abort(), timeoutMs)
+
+    // Promise.race guarantees the timeout fires even on iOS/mobile where
+    // AbortController.abort() doesn't always cancel a hanging fetch.
+    const timeoutPromise = new Promise(resolve =>
+      setTimeout(() => {
+        controller.abort()
+        resolve({ data: null, error: { name: 'AbortError', message: 'timeout', code: '20' } })
+      }, timeoutMs)
+    )
 
     try {
-      const result = await fn(controller.signal)
-      clearTimeout(tid)
+      const result = await Promise.race([fn(controller.signal), timeoutPromise])
 
       // Supabase returns { data: null, error } instead of throwing on abort
       if (result?.error) {
@@ -27,6 +34,7 @@ export async function readWithRetry(fn, { timeoutMs = 12000 } = {}) {
           msg.includes('abort') ||
           msg.includes('cancel') ||
           msg.includes('fetch') ||
+          msg.includes('timeout') ||
           result.error.code === '20'
         if (isAbort && attempt === 0) continue // warm up and retry
         // Non-abort Supabase error — return as-is, let caller handle
@@ -34,12 +42,12 @@ export async function readWithRetry(fn, { timeoutMs = 12000 } = {}) {
 
       return result
     } catch (err) {
-      clearTimeout(tid)
       const msg = (err?.message || '').toLowerCase()
       const isAbort =
         err?.name === 'AbortError' ||
         msg.includes('abort') ||
         msg.includes('cancel') ||
+        msg.includes('timeout') ||
         err?.code === '20'
       if (isAbort && attempt === 0) continue
       throw err

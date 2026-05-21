@@ -7,7 +7,7 @@ import { getFeeders } from '../data/bracketTree'
 import { saveWithRetry } from '../lib/saveWithRetry'
 import { readWithRetry } from '../lib/readWithRetry'
 import { useLoadGuard } from '../lib/useLoadGuard.jsx'
-import { getCached, setCached } from '../lib/dataCache'
+import { getCached, setCached, bustCache } from '../lib/dataCache'
 import './BracketPicks.css'
 
 // ── Bracket tree helpers ─────────────────────────────────────────
@@ -112,6 +112,8 @@ export default function BracketPicks() {
       }
       const [settingsRes, matchesRes, picksRes, scoreRes] = await Promise.all(queries)
 
+      if (!mountedRef.current) return
+
       const lockedVal = settingsRes?.data?.bracket_picks_locked ?? false
       const phaseVal  = settingsRes?.data?.phase ?? 1
       setLocked(lockedVal)
@@ -139,7 +141,6 @@ export default function BracketPicks() {
       const gPts = scoreRes?.data?.group_points ?? 0
       setGroupPts(gPts)
 
-      if (!mountedRef.current) return
       setCached(cacheKey, { matches: matchData, myPicks: pickMap, results: resultMap, locked: lockedVal, phase: phaseVal, groupPts: gPts })
     } catch {
       if (mountedRef.current && !getCached(cacheKey)) setError('Failed to load bracket')
@@ -212,6 +213,7 @@ export default function BracketPicks() {
       )
       setSaveStatus('')
       setSaved(true)
+      bustCache(cacheKey)  // force fresh load next visit so tiebreaker reflects latest save
       setTimeout(() => setSaved(false), 3000)
     } catch (e) {
       setError(e.message || 'Failed to save picks. Try again.')

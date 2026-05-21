@@ -72,29 +72,35 @@ export function AuthProvider({ children }) {
 
     async function ensureProfile(userId, email, displayName) {
       // Retry up to 5 times with increasing delays — handles cold Supabase starts
-      // that happen right after a user clicks an email confirmation link
-      const delays = [0, 1500, 3000, 5000, 8000]
+      // that happen right after a user clicks an email confirmation link.
+      // Each attempt has its own 10s timeout so a sleeping DB doesn't stall forever.
+      const delays = [0, 2000, 4000, 6000, 9000]
       for (let i = 0; i < delays.length; i++) {
         if (delays[i]) await new Promise(r => setTimeout(r, delays[i]))
         if (!mounted) return
+        const controller = new AbortController()
+        const tid = setTimeout(() => controller.abort(), 10000)
         try {
           const { data: existing } = await supabase
             .from('profiles').select('id').eq('id', userId).single()
+            .abortSignal(controller.signal)
+          clearTimeout(tid)
           if (!existing) {
+            const ctrl2 = new AbortController()
+            const tid2 = setTimeout(() => ctrl2.abort(), 10000)
             const { error: insErr } = await supabase.from('profiles').insert({
               id: userId,
               display_name: displayName || email?.split('@')[0] || 'Player',
               email: email || '',
               is_admin: false,
-            })
+            }).abortSignal(ctrl2.signal)
+            clearTimeout(tid2)
             if (insErr) throw insErr
           }
           return  // success — stop retrying
         } catch {
-          if (i === delays.length - 1) {
-            // Last attempt failed — profile creation silently dropped,
-            // user can still use the app but may need to refresh
-          }
+          clearTimeout(tid)
+          // silent — will retry or gracefully give up on last attempt
         }
       }
     }
@@ -123,7 +129,10 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
+    // scope: 'local' clears the session from this device immediately without
+    // needing a successful server round-trip — fixes sign out on slow connections
+    // and for accounts that were deleted from the DB
+    await supabase.auth.signOut({ scope: 'local' })
   }
 
   async function refreshProfile() {

@@ -7,7 +7,7 @@
  */
 import { useState, useEffect, useRef } from 'react'
 
-export function useLoadGuard(loading, retry, { stuckMs = 15000 } = {}) {
+export function useLoadGuard(loading, retry, { stuckMs = 8000 } = {}) {
   const [isStuck, setIsStuck] = useState(false)
   const timerRef = useRef(null)
 
