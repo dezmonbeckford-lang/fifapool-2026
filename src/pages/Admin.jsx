@@ -562,6 +562,7 @@ function BracketResultsTab({ onMsg }) {
   const [finalScores,  setFinalScores]  = useState({})   // { matchId: { s1, s2 } }
   const [loading,      setLoading]      = useState(true)
   const [savingMatch,  setSavingMatch]  = useState(null) // matchId currently saving
+  const [saveError,    setSaveError]    = useState('')   // inline error shown in tab
   const [advancing,    setAdvancing]    = useState(false)
   const [resetting,    setResetting]    = useState(false)
   const [activeRound,  setActiveRound]  = useState('R32')
@@ -617,32 +618,41 @@ function BracketResultsTab({ onMsg }) {
     if (match.is_final) {
       const fs = finalScores[match.id] || {}
       if (fs.s1 === '' || fs.s1 == null || fs.s2 === '' || fs.s2 == null) {
-        onMsg('Enter the final score before saving.')
+        setSaveError('Enter the final score before saving.')
         return
       }
     }
 
     setSavingMatch(match.id)
+    setSaveError('')
     try {
+      // 1. Save the match result
       const payload = { actual_winner: winner, result_entered: true }
       if (match.is_final) {
         const fs = finalScores[match.id] || {}
         payload.actual_score1 = Number(fs.s1)
         payload.actual_score2 = Number(fs.s2)
       }
-      const { error } = await supabase.from('bracket_matches').update(payload).eq('id', match.id)
-      if (error) throw error
+      const { error: matchErr } = await supabase
+        .from('bracket_matches').update(payload).eq('id', match.id)
+      if (matchErr) throw new Error(`Match save failed: ${matchErr.message}`)
 
-      // Recalculate all bracket scores from scratch (reliable, no fire-and-forget)
-      const { error: scoreErr } = await supabase.rpc('recalculate_bracket_scores')
-      if (scoreErr) throw scoreErr
-
-      // Clear the pending pick for this match
+      // 2. Optimistically mark saved in local state so UI flips immediately
+      setMatches(prev => prev.map(m =>
+        m.id === match.id ? { ...m, ...payload } : m
+      ))
       setPicks(prev => { const n = { ...prev }; delete n[match.id]; return n })
 
-      await loadMatches()
+      // 3. Recalculate scores (after UI already updated so it feels instant)
+      const { error: scoreErr } = await supabase.rpc('recalculate_bracket_scores')
+      if (scoreErr) throw new Error(`Score update failed: ${scoreErr.message}`)
+
+      // 4. Reload from DB to sync any edge cases
+      loadMatches()
       onMsg(`✓ ${winner} saved — scores updated!`)
     } catch (err) {
+      console.error('saveMatch error:', err)
+      setSaveError(err.message)
       onMsg(`Error: ${err.message}`)
     } finally {
       setSavingMatch(null)
@@ -798,6 +808,11 @@ function BracketResultsTab({ onMsg }) {
 
       {/* Save bar — progress + advance button when all saved */}
       <div className="bracket-save-bar">
+        {saveError && (
+          <div style={{ color: '#ef4444', fontSize: 13, fontWeight: 600, textAlign: 'center', padding: '4px 0' }}>
+            ⚠️ {saveError}
+          </div>
+        )}
         <div className="bsb-progress">
           {savedCount(activeRound)}/{roundMatches.length} saved
           {roundComplete && <span className="bsb-all-done"> ✓ All saved!</span>}
