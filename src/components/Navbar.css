@@ -26,7 +26,7 @@
   font-size: 18px;
   flex-shrink: 0;
 }
-.brand-icon { font-size: 22px; }
+.brand-logo { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
 .brand-year { color: var(--accent); }
 
 .navbar-links {

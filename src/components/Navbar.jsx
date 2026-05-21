@@ -18,7 +18,7 @@ export default function Navbar() {
     <header className="navbar">
       <div className="navbar-inner">
         <Link to="/" className="navbar-brand">
-          <span className="brand-icon">⚽</span>
+          <img src="/logo.svg" alt="FifaPool" className="brand-logo" />
           <span className="brand-text">FifaPool<span className="brand-year"> 2026</span></span>
         </Link>
 
