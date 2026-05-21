@@ -3,9 +3,11 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS } from '../data/groups'
 import { ROUND_LABELS } from '../data/scoring'
+import { getNextSlot } from '../data/bracketTree'
 import { saveWithRetry } from '../lib/saveWithRetry'
 import { readWithRetry } from '../lib/readWithRetry'
 import './Admin.css'
+import './BracketPicks.css'
 
 export default function Admin() {
   const { profile } = useAuth()
@@ -547,113 +549,356 @@ function BracketSetupTab({ onMsg }) {
   )
 }
 
+
+const RESULT_ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
+const PREV_ROUND_MAP = { R16: 'R32', QF: 'R16', SF: 'QF', THIRD: 'SF', FINAL: 'SF' }
+// After saving SF → go to THIRD tab first (loser match), then FINAL
+const NEXT_ROUND_MAP = { R32: 'R16', R16: 'QF', QF: 'SF', SF: 'THIRD', THIRD: 'FINAL' }
+
 // ── Bracket Results ─────────────────────────────────────────────
 function BracketResultsTab({ onMsg }) {
-  const [matches, setMatches] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(null)
+  const [matches,     setMatches]     = useState([])
+  const [picks,       setPicks]       = useState({})   // { matchId: winner } — pending local picks
+  const [finalScore,  setFinalScore]  = useState({ s1: '', s2: '' })
+  const [loading,     setLoading]     = useState(true)
+  const [saving,      setSaving]      = useState(false)
+  const [resetting,   setResetting]   = useState(false)
+  const [activeRound, setActiveRound] = useState('R32')
 
   useEffect(() => { loadMatches() }, [])
 
   async function loadMatches() {
     try {
-      const res = await readWithRetry(sig => supabase.from('bracket_matches').select('*').order('round_order', { ascending: true }).order('match_number', { ascending: true }).abortSignal(sig))
+      const res = await readWithRetry(sig =>
+        supabase.from('bracket_matches').select('*')
+          .order('round_order', { ascending: true })
+          .order('match_number', { ascending: true })
+          .abortSignal(sig)
+      )
       setMatches(res?.data || [])
     } catch { /* non-fatal */ } finally {
       setLoading(false)
     }
   }
 
-  async function saveResult(matchId, winner) {
-    setSaving(matchId)
+  async function resetResults() {
+    if (!window.confirm('Reset ALL bracket results? Clears every result and zeroes all bracket points. Cannot be undone.')) return
+    setResetting(true)
     try {
-      await saveWithRetry(async (signal) => {
-        const { error } = await supabase
-          .from('bracket_matches')
-          .update({ actual_winner: winner, result_entered: true })
-          .eq('id', matchId)
-          .abortSignal(signal)
-        if (error) throw error
-        const { error: scoreErr } = await supabase.rpc('score_bracket_match', { match_id: matchId }).abortSignal(signal)
-        if (scoreErr) throw scoreErr
-      })
-      onMsg('✓ Result saved and scores updated!')
+      const { error: e1 } = await supabase
+        .from('bracket_matches')
+        .update({ actual_winner: null, result_entered: false, actual_score1: null, actual_score2: null, team1: null, team2: null })
+        .in('round', ['R16', 'QF', 'SF', 'THIRD', 'FINAL'])
+      if (e1) throw e1
+      // Keep R32 teams but clear results
+      const { error: e2 } = await supabase
+        .from('bracket_matches')
+        .update({ actual_winner: null, result_entered: false })
+        .eq('round', 'R32')
+      if (e2) throw e2
+      const { error: e3 } = await supabase.rpc('reset_bracket_scores')
+      if (e3) throw e3
+      setPicks({})
+      setFinalScore({ s1: '', s2: '' })
+      setActiveRound('R32')
+      onMsg('✓ All results cleared and scores reset.')
       loadMatches()
     } catch (err) {
       onMsg(`Error: ${err.message}`)
     } finally {
-      setSaving(null)
+      setResetting(false)
+    }
+  }
+
+  // Save all picks for the current round, then propagate teams to the next round
+  async function saveRound() {
+    const roundMatches = matches.filter(m => m.round === activeRound)
+    const unpicked = roundMatches.filter(m => !m.result_entered && !picks[m.id])
+    if (unpicked.length > 0) {
+      onMsg(`Pick all ${unpicked.length} remaining winner(s) first.`)
+      return
+    }
+    // For Final: require scores
+    if (activeRound === 'FINAL') {
+      if (finalScore.s1 === '' || finalScore.s2 === '') {
+        onMsg('Enter the final score before saving.')
+        return
+      }
+    }
+
+    setSaving(true)
+    try {
+      // 1. Save results for every match in this round
+      for (const match of roundMatches) {
+        if (match.result_entered) continue   // already saved, skip
+        const winner = picks[match.id]
+        if (!winner) continue
+
+        const payload = { actual_winner: winner, result_entered: true }
+        if (match.is_final) {
+          payload.actual_score1 = Number(finalScore.s1)
+          payload.actual_score2 = Number(finalScore.s2)
+        }
+        const { error } = await supabase.from('bracket_matches').update(payload).eq('id', match.id)
+        if (error) throw new Error(`Save match ${match.match_number}: ${error.message}`)
+
+        // Fire-and-forget scoring
+        supabase.rpc('score_bracket_match', { match_id: match.id })
+      }
+
+      // 2. Propagate winners into next round's team slots
+      const freshRes = await supabase.from('bracket_matches').select('*')
+        .order('round_order').order('match_number')
+      const fresh = freshRes.data || []
+
+      const nextRound = NEXT_ROUND_MAP[activeRound]
+      if (nextRound) {
+        const updates = []
+        const currentRoundMatches = fresh.filter(m => m.round === activeRound)
+
+        for (const match of currentRoundMatches) {
+          const winner = match.actual_winner || picks[match.id]
+          if (!winner) continue
+
+          const next = getNextSlot(match.round, match.match_number)
+          if (next) {
+            const slotKey   = next.slot === 1 ? 'team1' : 'team2'
+            const nextMatch = fresh.find(m => m.round === next.round && m.match_number === next.matchNum)
+            if (nextMatch) updates.push({ id: nextMatch.id, slot: slotKey, team: winner })
+          }
+
+          // SF: send loser to Third place
+          if (match.round === 'SF') {
+            const loser      = match.team1 === winner ? match.team2 : match.team1
+            const thirdSlot  = match.match_number === 1 ? 'team1' : 'team2'
+            const thirdMatch = fresh.find(m => m.round === 'THIRD')
+            if (thirdMatch && loser) updates.push({ id: thirdMatch.id, slot: thirdSlot, team: loser })
+          }
+        }
+
+        // Apply all team propagations
+        for (const u of updates) {
+          const { error } = await supabase.from('bracket_matches').update({ [u.slot]: u.team }).eq('id', u.id)
+          if (error) throw new Error(`Initialize ${nextRound}: ${error.message}`)
+        }
+      }
+
+      // 3. Clear pending picks, reload, advance to next round
+      setPicks({})
+      setFinalScore({ s1: '', s2: '' })
+      await loadMatches()
+      if (nextRound) setActiveRound(nextRound)
+      onMsg(`✓ ${ROUND_LABELS[activeRound]} saved${nextRound ? ` — ${ROUND_LABELS[nextRound]} is ready!` : ' — bracket complete!'}`)
+
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
     }
   }
 
   if (loading) return <div className="spinner" />
 
+  if (matches.length === 0) {
+    return (
+      <div className="admin-section">
+        <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--text2)' }}>
+          No bracket matches yet — go to Bracket Setup first.
+        </div>
+      </div>
+    )
+  }
+
   const byRound = {}
-  matches.forEach(m => {
-    if (!byRound[m.round]) byRound[m.round] = []
-    byRound[m.round].push(m)
-  })
+  RESULT_ROUND_ORDER.forEach(r => { byRound[r] = matches.filter(m => m.round === r) })
+
+  const savedCount  = r => (byRound[r] || []).filter(m => m.result_entered).length
+  const totalCount  = r => (byRound[r] || []).length
+  const isComplete  = r => totalCount(r) > 0 && savedCount(r) === totalCount(r)
+  const isAccessible = r => {
+    if (r === 'R32') return true
+    const pr = PREV_ROUND_MAP[r]
+    return !pr || isComplete(pr)
+  }
+
+  const activeRounds  = RESULT_ROUND_ORDER.filter(r => totalCount(r) > 0)
+  const activeIdx     = activeRounds.indexOf(activeRound)
+  const prevRound     = activeIdx > 0 ? activeRounds[activeIdx - 1] : null
+  const roundMatches  = byRound[activeRound] || []
+  const nextRoundName = NEXT_ROUND_MAP[activeRound]
+
+  // Count how many of the current round have been picked (saved OR pending local pick)
+  const pickedCount = roundMatches.filter(m => m.result_entered || picks[m.id]).length
+  const allPicked   = pickedCount === roundMatches.length && roundMatches.length > 0
+  const isFinalRound = activeRound === 'FINAL'
+  const saveReady   = allPicked && (!isFinalRound || (finalScore.s1 !== '' && finalScore.s2 !== ''))
 
   return (
-    <div className="admin-section">
-      <div className="admin-section-header">
-        <h2>Bracket Results</h2>
-        <p>Enter match winners as games are played. Scores update instantly for all players.</p>
+    <div className="admin-results-page">
+
+      {/* Header */}
+      <div className="results-header-row" style={{ marginBottom: 16 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>Bracket Results</h2>
+          <p style={{ fontSize: 13, color: 'var(--text2)' }}>Pick winners, then save to unlock the next round.</p>
+        </div>
+        <button
+          className="btn btn-sm"
+          style={{ color: '#ef4444', borderColor: '#ef4444', whiteSpace: 'nowrap' }}
+          onClick={resetResults}
+          disabled={resetting}
+        >
+          {resetting ? 'Resetting…' : '🗑 Reset All'}
+        </button>
       </div>
 
-      {matches.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--text2)' }}>
-          No bracket matches yet. Go to "Bracket Setup" first.
-        </div>
-      )}
+      {/* Round tabs */}
+      <div className="round-tabs">
+        {activeRounds.map(r => {
+          const accessible = isAccessible(r)
+          const complete   = isComplete(r)
+          return (
+            <button
+              key={r}
+              className={`round-tab${activeRound === r ? ' active' : ''}${complete ? ' done' : ''}`}
+              onClick={() => accessible && setActiveRound(r)}
+              disabled={!accessible}
+            >
+              <span className="rt-label">{ROUND_LABELS[r]}</span>
+              <span className="rt-count">{savedCount(r)}/{totalCount(r)}</span>
+            </button>
+          )
+        })}
+      </div>
 
-      {['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL'].map(round => {
-        const roundMatches = byRound[round]
-        if (!roundMatches?.length) return null
-        const done = roundMatches.filter(m => m.result_entered).length
-        return (
-          <div key={round} className="bracket-round">
-            <div className="bracket-round-header">
-              <h3>{ROUND_LABELS[round]}</h3>
-              <span className="badge badge-gray">{done}/{roundMatches.length} done</span>
-            </div>
-            <div className="bracket-matches-list">
-              {roundMatches.map(match => (
-                <MatchResultRow key={match.id} match={match}
-                  onSave={saveResult} isSaving={saving === match.id} />
-              ))}
-            </div>
-          </div>
-        )
-      })}
+      {/* Match cards */}
+      <div className="bracket-matches" style={{ paddingBottom: 120 }}>
+        {roundMatches.map(match => (
+          <AdminResultCard
+            key={match.id}
+            match={match}
+            pendingWinner={picks[match.id] || null}
+            onPick={winner => setPicks(prev => ({ ...prev, [match.id]: winner }))}
+            finalScore={match.is_final ? finalScore : null}
+            onFinalScore={match.is_final ? setFinalScore : null}
+          />
+        ))}
+      </div>
+
+      {/* Round navigation */}
+      <div className="bracket-round-nav">
+        {prevRound ? (
+          <button className="btn btn-outline brn-btn" onClick={() => setActiveRound(prevRound)}>
+            ← {ROUND_LABELS[prevRound]}
+          </button>
+        ) : <div />}
+      </div>
+
+      {/* Save bar — fixed at bottom, same as BracketPicks */}
+      <div className="bracket-save-bar">
+        <div className="bsb-progress">
+          {pickedCount}/{roundMatches.length} picked
+          {allPicked && <span className="bsb-all-done"> ✓ All picked!</span>}
+        </div>
+        <button
+          className={`btn btn-lg btn-full${saveReady ? ' btn-success' : ' btn-primary'}`}
+          onClick={saveRound}
+          disabled={saving || isComplete(activeRound)}
+        >
+          {saving
+            ? 'Saving…'
+            : isComplete(activeRound)
+              ? `✓ ${ROUND_LABELS[activeRound]} Complete`
+              : saveReady
+                ? `💾 Save & Initialize ${nextRoundName ? ROUND_LABELS[nextRoundName] : 'Final'}`
+                : `${pickedCount}/${roundMatches.length} — Pick all winners to save`}
+        </button>
+      </div>
     </div>
   )
 }
 
-function MatchResultRow({ match, onSave, isSaving }) {
-  const [selected, setSelected] = useState(match.actual_winner || '')
+// ── AdminResultCard ──────────────────────────────────────────────
+function AdminResultCard({ match, pendingWinner, onPick, finalScore, onFinalScore }) {
+  const { team1, team2, result_entered, actual_winner, is_final } = match
+  const displayWinner = result_entered ? actual_winner : pendingWinner
+  const bothKnown = !!(team1 && team2)
+
   return (
-    <div className={`match-row card${match.result_entered ? ' done' : ''}`}>
-      <div className="match-teams">
-        <span>{TEAM_FLAGS[match.team1] || '🏳️'} {match.team1 || 'TBD'}</span>
-        <span className="vs">vs</span>
-        <span>{TEAM_FLAGS[match.team2] || '🏳️'} {match.team2 || 'TBD'}</span>
+    <div className={`bm-card card${result_entered ? ' correct' : pendingWinner ? ' wrong' : ''}`}
+         style={pendingWinner && !result_entered ? { borderColor: 'var(--accent)' } : {}}>
+      <div className="bm-header">
+        <span className="bm-pts">Match {match.match_number}</span>
+        {result_entered
+          ? <span className="bm-result-badge correct">✓ Saved</span>
+          : displayWinner
+            ? <span className="bm-result-badge" style={{ color: 'var(--accent)' }}>⭐ {displayWinner}</span>
+            : null}
       </div>
-      {match.result_entered ? (
-        <div className="match-result-done">✓ Winner: <strong>{TEAM_FLAGS[match.actual_winner]} {match.actual_winner}</strong></div>
-      ) : (
-        <div className="match-result-input">
-          <select className="input" value={selected} onChange={e => setSelected(e.target.value)}
-            disabled={!match.team1 || !match.team2}>
-            <option value="">— select winner —</option>
-            {match.team1 && <option value={match.team1}>{TEAM_FLAGS[match.team1]} {match.team1}</option>}
-            {match.team2 && <option value={match.team2}>{TEAM_FLAGS[match.team2]} {match.team2}</option>}
-          </select>
-          <button className="btn btn-primary btn-sm"
-            onClick={() => onSave(match.id, selected)}
-            disabled={!selected || isSaving}>
-            {isSaving ? '…' : 'Save'}
+
+      <div className="bm-teams">
+        {team1 ? (
+          <button
+            className={`tpb${displayWinner === team1 ? (result_entered ? ' winner' : ' picked') : ''}${result_entered && actual_winner !== team1 ? ' loser' : ''}`}
+            onClick={() => !result_entered && bothKnown && onPick(team1)}
+            disabled={result_entered || !bothKnown}
+          >
+            <span className="tpb-flag">{TEAM_FLAGS[team1] || '🏳️'}</span>
+            <span className="tpb-name">{team1}</span>
+            {displayWinner === team1 && <span className="tpb-crown">{result_entered ? '👑' : '⭐'}</span>}
           </button>
+        ) : (
+          <div className="tpb tpb-tbd">
+            <span className="tpb-flag">⏳</span>
+            <span className="tpb-name">Previous round not saved yet</span>
+          </div>
+        )}
+
+        <span className="bm-vs">VS</span>
+
+        {team2 ? (
+          <button
+            className={`tpb${displayWinner === team2 ? (result_entered ? ' winner' : ' picked') : ''}${result_entered && actual_winner !== team2 ? ' loser' : ''}`}
+            onClick={() => !result_entered && bothKnown && onPick(team2)}
+            disabled={result_entered || !bothKnown}
+          >
+            <span className="tpb-flag">{TEAM_FLAGS[team2] || '🏳️'}</span>
+            <span className="tpb-name">{team2}</span>
+            {displayWinner === team2 && <span className="tpb-crown">{result_entered ? '👑' : '⭐'}</span>}
+          </button>
+        ) : (
+          <div className="tpb tpb-tbd">
+            <span className="tpb-flag">⏳</span>
+            <span className="tpb-name">Previous round not saved yet</span>
+          </div>
+        )}
+      </div>
+
+      {/* Final score inputs */}
+      {is_final && finalScore && !result_entered && (
+        <div className="tiebreaker">
+          <div className="tb-label">🏆 Enter final score:</div>
+          <div className="tb-inputs">
+            <div className="tb-team">
+              <span>{TEAM_FLAGS[team1] || '🏳️'} {team1 || '?'}</span>
+              <input type="number" min="0" max="20" className="input tb-input"
+                value={finalScore.s1} placeholder="0"
+                onChange={e => onFinalScore(prev => ({ ...prev, s1: e.target.value }))} />
+            </div>
+            <span className="tb-dash">—</span>
+            <div className="tb-team">
+              <input type="number" min="0" max="20" className="input tb-input"
+                value={finalScore.s2} placeholder="0"
+                onChange={e => onFinalScore(prev => ({ ...prev, s2: e.target.value }))} />
+              <span>{team2 || '?'} {TEAM_FLAGS[team2] || '🏳️'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {is_final && result_entered && match.actual_score1 != null && (
+        <div style={{ textAlign: 'center', color: 'var(--text2)', fontSize: 13, marginTop: 8 }}>
+          {team1} {match.actual_score1} – {match.actual_score2} {team2}
         </div>
       )}
     </div>

@@ -174,10 +174,9 @@
 .match-row {
   padding: 12px 16px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 .match-row.done { border-color: rgba(16,185,129,0.3); }
 
@@ -268,3 +267,82 @@
 .picks-badge.done { color: var(--accent); }
 .player-pts { font-weight: 700; font-size: 14px; }
 .toggle-btn-sm { padding: 4px 10px !important; font-size: 12px !important; min-width: 0 !important; }
+
+/* ── Badges ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.badge-gray   { background: rgba(120,120,120,0.15); color: var(--text2); }
+.badge-green  { background: rgba(16,185,129,0.15);  color: #10b981; }
+.badge-yellow { background: rgba(234,179, 8,0.15);  color: #ca8a04; }
+
+/* ── Bracket Results ── */
+.results-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Admin results page wrapper — give bracket-matches room */
+.admin-results-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.admin-results-page .bracket-matches  { padding-bottom: 80px; }
+.admin-results-page .bracket-round-nav { margin-top: 8px; }
+
+.bracket-round { margin-bottom: 4px; }
+.bracket-round.round-locked { opacity: 0.55; }
+
+.match-meta-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.match-number { font-size: 11px; color: var(--text2); font-weight: 600; }
+
+.match-row.match-row-disabled { pointer-events: none; }
+
+.match-teams { font-weight: 600; }
+.team-winner { color: #10b981; }
+
+.match-result-done {
+  font-size: 13px;
+  color: #10b981;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.final-score-display {
+  font-size: 12px;
+  color: var(--text2);
+  font-weight: 500;
+}
+
+.match-result-input {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+.match-result-input .input { max-width: 260px; width: 100%; }
+
+.final-score-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.score-label { font-size: 12px; color: var(--text2); font-weight: 600; }
+.score-input  { width: 60px !important; text-align: center; padding: 6px 8px !important; }
+.score-dash   { font-size: 16px; font-weight: 700; color: var(--text2); }

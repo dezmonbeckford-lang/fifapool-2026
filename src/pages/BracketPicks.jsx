@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { TEAM_FLAGS } from '../data/groups'
 import { BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
+import { getFeeders } from '../data/bracketTree'
 import { saveWithRetry } from '../lib/saveWithRetry'
 import { readWithRetry } from '../lib/readWithRetry'
 import { useLoadGuard } from '../lib/useLoadGuard.jsx'
@@ -10,15 +11,11 @@ import { getCached, setCached } from '../lib/dataCache'
 import './BracketPicks.css'
 
 // ── Bracket tree helpers ─────────────────────────────────────────
-// Standard bracket: R16 match N → R32 matches (2N-1) and (2N), etc.
 const ROUND_SEQUENCE = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
-const PREV_ROUND     = { R16: 'R32', QF: 'R16', SF: 'QF', FINAL: 'SF' }
 
 /**
  * Compute which teams appear in a given match slot.
- * For R32: use the real team names from bracket_matches.
- * For later rounds: use the user's picks from previous rounds.
- * For THIRD: use the losers of both SF matches.
+ * Uses the shared bracketTree connections (FIFA 2026 correct bracket).
  */
 function getMatchTeams(round, matchNum, byRound, picks) {
   if (round === 'R32') {
@@ -26,16 +23,16 @@ function getMatchTeams(round, matchNum, byRound, picks) {
     return { team1: m?.team1 || null, team2: m?.team2 || null }
   }
   if (round === 'THIRD') {
-    // Losers of SF matches 1 & 2
     return {
       team1: resolveLoser('SF', 1, byRound, picks),
       team2: resolveLoser('SF', 2, byRound, picks),
     }
   }
-  const prev = PREV_ROUND[round]
+  // getFeeders returns [{round, matchNum, type}] for the two feeder matches
+  const [f1, f2] = getFeeders(round, matchNum)
   return {
-    team1: resolveWinner(prev, matchNum * 2 - 1, byRound, picks),
-    team2: resolveWinner(prev, matchNum * 2,     byRound, picks),
+    team1: f1 ? resolveWinner(f1.round, f1.matchNum, byRound, picks) : null,
+    team2: f2 ? resolveWinner(f2.round, f2.matchNum, byRound, picks) : null,
   }
 }
 
