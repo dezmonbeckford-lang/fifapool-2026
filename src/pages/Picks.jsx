@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
@@ -11,6 +11,7 @@ import './Picks.css'
 export default function Picks() {
   const { user } = useAuth()
   const wildcardRef = useRef(null)
+  const mountedRef  = useRef(true)
   const cacheKey = `picks-${user?.id}`
   const cached = getCached(cacheKey)
 
@@ -31,17 +32,21 @@ export default function Picks() {
   const [loading, setLoading] = useState(!cached)
 
   useEffect(() => {
+    mountedRef.current = true
     if (user?.id) loadData()
+    return () => { mountedRef.current = false }
   }, [user?.id])
 
   async function loadData() {
-    if (!getCached(cacheKey)) setLoading(true)
+    if (!getCached(cacheKey) && mountedRef.current) setLoading(true)
     try {
       const [settingsRes, gpRes, wpRes] = await Promise.all([
         readWithRetry(sig => supabase.from('settings').select('group_picks_locked').single().abortSignal(sig)),
         readWithRetry(sig => supabase.from('group_picks').select('group_id, winner, runner_up').eq('user_id', user.id).abortSignal(sig)),
         readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', user.id).abortSignal(sig)),
       ])
+
+      if (!mountedRef.current) return
 
       const lockedVal = settingsRes?.data?.group_picks_locked ?? false
       setLocked(lockedVal)
@@ -61,9 +66,9 @@ export default function Picks() {
 
       setCached(cacheKey, { locked: lockedVal, groupPicks: parsedPicks, wildcardPicks: wc })
     } catch {
-      if (!getCached(cacheKey)) setError('Failed to load picks. Check your connection.')
+      if (mountedRef.current && !getCached(cacheKey)) setError('Failed to load picks. Check your connection.')
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 

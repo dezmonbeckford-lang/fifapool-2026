@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
@@ -11,8 +11,13 @@ const CACHE_KEY = 'home-stats'
 export default function Home() {
   const { user } = useAuth()
   const [stats, setStats] = useState(getCached(CACHE_KEY))
+  const mountedRef = useRef(true)
 
-  useEffect(() => { loadStats() }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    loadStats()
+    return () => { mountedRef.current = false }
+  }, [])
 
   async function loadStats() {
     try {
@@ -26,6 +31,7 @@ export default function Home() {
         readWithRetry(sig => supabase.from('profiles')
           .select('id', { count: 'exact', head: true }).abortSignal(sig)),
       ])
+      if (!mountedRef.current) return
       const fresh = {
         top3: scores?.data || [],
         settings: settings?.data || {},

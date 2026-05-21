@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth.jsx'
@@ -13,6 +13,7 @@ const ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
 export default function PlayerPicks() {
   const { userId } = useParams()
   const { user } = useAuth()
+  const mountedRef = useRef(true)
 
   const [player, setPlayer]           = useState(null)
   const [settings, setSettings]       = useState(null)
@@ -27,22 +28,27 @@ export default function PlayerPicks() {
   const [notFound, setNotFound]       = useState(false)
 
   useEffect(() => {
+    mountedRef.current = true
     if (userId) loadData()
+    return () => { mountedRef.current = false }
   }, [userId])
 
   async function loadData() {
+    if (!mountedRef.current) return
     setLoading(true)
     setLoadError('')
     try {
       const [profileRes, settingsRes, gpRes, wpRes, bpRes, matchesRes, scoreRes] = await Promise.all([
-        readWithRetry(sig => supabase.from('profiles').select('id, display_name, email').eq('id', userId).single().abortSignal(sig)),
-        readWithRetry(sig => supabase.from('settings').select('*').single().abortSignal(sig)),
-        readWithRetry(sig => supabase.from('group_picks').select('*').eq('user_id', userId).abortSignal(sig)),
+        readWithRetry(sig => supabase.from('profiles').select('id, display_name').eq('id', userId).single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings').select('phase, group_picks_locked').single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('group_picks').select('group_id, winner, runner_up').eq('user_id', userId).abortSignal(sig)),
         readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', userId).abortSignal(sig)),
-        readWithRetry(sig => supabase.from('bracket_picks').select('*').eq('user_id', userId).abortSignal(sig)),
+        readWithRetry(sig => supabase.from('bracket_picks').select('match_id, picked_winner, tiebreaker_score1, tiebreaker_score2').eq('user_id', userId).abortSignal(sig)),
         readWithRetry(sig => supabase.from('bracket_matches').select('*').order('round_order').order('match_number').abortSignal(sig)),
-        readWithRetry(sig => supabase.from('scores').select('*').eq('user_id', userId).single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('scores').select('group_points, bracket_points, total_points').eq('user_id', userId).single().abortSignal(sig)),
       ])
+
+      if (!mountedRef.current) return
 
       if (profileRes?.error || !profileRes?.data) { setNotFound(true); return }
 
@@ -50,7 +56,6 @@ export default function PlayerPicks() {
       setSettings(settingsRes?.data || null)
       setScore(scoreRes?.data || null)
 
-      // Group picks
       const gMap = {}
       ;(gpRes?.data || []).forEach(row => {
         gMap[row.group_id] = { winner: row.winner || '', runnerUp: row.runner_up || '' }
@@ -58,7 +63,6 @@ export default function PlayerPicks() {
       setGroupPicks(gMap)
       setWildcard((wpRes?.data || []).map(r => r.team))
 
-      // Bracket picks
       const bMap = {}
       ;(bpRes?.data || []).forEach(p => {
         bMap[p.match_id] = {
@@ -70,6 +74,7 @@ export default function PlayerPicks() {
       setBracket(bMap)
       setMatches(matchesRes?.data || [])
     } catch (err) {
+      if (!mountedRef.current) return
       const isAbort = err?.name === 'AbortError' || err?.message?.toLowerCase().includes('abort')
       if (isAbort) {
         setLoadError('Server is waking up — tap retry')
@@ -77,7 +82,7 @@ export default function PlayerPicks() {
         setNotFound(true)
       }
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 

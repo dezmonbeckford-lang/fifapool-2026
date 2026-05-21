@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
@@ -16,20 +16,29 @@ export default function Leaderboard() {
   const [settings, setSettings] = useState(cached?.settings || null)
   const [loading, setLoading]   = useState(!cached)
   const [error, setError]       = useState('')
+  const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
     loadLeaderboard()
+
+    // Unique channel name per mount prevents stale subscriptions accumulating
+    const channelName = `leaderboard-${Date.now()}`
     const channel = supabase
-      .channel('leaderboard')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, loadLeaderboard)
+      .channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' },
+        () => { if (mountedRef.current) loadLeaderboard() })
       .subscribe()
-    return () => supabase.removeChannel(channel)
+
+    return () => {
+      mountedRef.current = false
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   async function loadLeaderboard() {
-    // Only block the UI with a spinner on first ever load
-    if (!getCached(CACHE_KEY)) setLoading(true)
-    setError('')
+    if (!getCached(CACHE_KEY) && mountedRef.current) setLoading(true)
+    if (mountedRef.current) setError('')
     try {
       const [profilesRes, scoresRes, settingsRes] = await Promise.all([
         readWithRetry(sig => supabase.from('profiles').select('id, display_name').abortSignal(sig)),
@@ -37,11 +46,13 @@ export default function Leaderboard() {
         readWithRetry(sig => supabase.from('settings').select('group_picks_locked, phase').single().abortSignal(sig)),
       ])
 
+      if (!mountedRef.current) return  // unmounted while fetching — bail out
+
       if (profilesRes?.error) throw profilesRes.error
-      if (scoresRes?.error) throw scoresRes.error
+      if (scoresRes?.error)   throw scoresRes.error
 
       const profiles = profilesRes?.data || []
-      const scores   = scoresRes?.data || []
+      const scores   = scoresRes?.data  || []
       const settingsData = settingsRes?.data || null
 
       const scoreMap = {}
@@ -59,10 +70,10 @@ export default function Leaderboard() {
       setEntries(merged)
       setSettings(settingsData)
       setCached(CACHE_KEY, { entries: merged, settings: settingsData })
-    } catch (err) {
-      if (!entries.length) setError('Failed to load leaderboard')
+    } catch {
+      if (mountedRef.current && !entries.length) setError('Failed to load leaderboard')
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 

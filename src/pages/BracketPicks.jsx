@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { TEAM_FLAGS } from '../data/groups'
@@ -94,11 +94,16 @@ export default function BracketPicks() {
   const [saved,       setSaved]       = useState(false)
   const [error,       setError]       = useState('')
   const [loading,     setLoading]     = useState(!cached)
+  const mountedRef = useRef(true)
 
-  useEffect(() => { loadData() }, [user?.id])
+  useEffect(() => {
+    mountedRef.current = true
+    loadData()
+    return () => { mountedRef.current = false }
+  }, [user?.id])
 
   async function loadData() {
-    if (!getCached(cacheKey)) setLoading(true)
+    if (!getCached(cacheKey) && mountedRef.current) setLoading(true)
     try {
       const queries = [
         readWithRetry(sig => supabase.from('settings').select('phase, bracket_picks_locked').single().abortSignal(sig)),
@@ -137,11 +142,12 @@ export default function BracketPicks() {
       const gPts = scoreRes?.data?.group_points ?? 0
       setGroupPts(gPts)
 
+      if (!mountedRef.current) return
       setCached(cacheKey, { matches: matchData, myPicks: pickMap, results: resultMap, locked: lockedVal, phase: phaseVal, groupPts: gPts })
     } catch {
-      if (!getCached(cacheKey)) setError('Failed to load bracket')
+      if (mountedRef.current && !getCached(cacheKey)) setError('Failed to load bracket')
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 
