@@ -152,8 +152,8 @@ export default function Leaderboard() {
             <div className="lb-table-header">
               <span>#</span>
               <span>Player</span>
-              <span className="pts-col">Group</span>
-              <span className="pts-col">Bracket</span>
+              <span className="pts-col">Grp</span>
+              <span className="pts-col">Bkt</span>
               <span className="pts-col total-col">Total</span>
             </div>
             {entries.map((entry, index) => {
