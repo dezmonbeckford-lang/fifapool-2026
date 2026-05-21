@@ -82,11 +82,12 @@ export default function BracketPicks() {
   const cacheKey  = `bracket-picks-${user?.id || 'anon'}`
   const cached    = getCached(cacheKey)
 
-  const [matches,     setMatches]     = useState(cached?.matches  || [])
-  const [myPicks,     setMyPicks]     = useState(cached?.myPicks  || {})
-  const [results,     setResults]     = useState(cached?.results  || {})
-  const [locked,      setLocked]      = useState(cached?.locked   || false)
-  const [phase,       setPhase]       = useState(cached?.phase    || 1)
+  const [matches,     setMatches]     = useState(cached?.matches    || [])
+  const [myPicks,     setMyPicks]     = useState(cached?.myPicks    || {})
+  const [results,     setResults]     = useState(cached?.results    || {})
+  const [locked,      setLocked]      = useState(cached?.locked     || false)
+  const [phase,       setPhase]       = useState(cached?.phase      || 1)
+  const [groupPts,    setGroupPts]    = useState(cached?.groupPts   ?? null)
   const [activeRound, setActiveRound] = useState('R32')
   const [saving,      setSaving]      = useState(false)
   const [saveStatus,  setSaveStatus]  = useState('')
@@ -103,10 +104,11 @@ export default function BracketPicks() {
         readWithRetry(sig => supabase.from('settings').select('phase, bracket_picks_locked').single().abortSignal(sig)),
         readWithRetry(sig => supabase.from('bracket_matches').select('*').order('round_order').order('match_number').abortSignal(sig)),
       ]
-      if (user?.id) queries.push(
-        readWithRetry(sig => supabase.from('bracket_picks').select('*').eq('user_id', user.id).abortSignal(sig))
-      )
-      const [settingsRes, matchesRes, picksRes] = await Promise.all(queries)
+      if (user?.id) {
+        queries.push(readWithRetry(sig => supabase.from('bracket_picks').select('*').eq('user_id', user.id).abortSignal(sig)))
+        queries.push(readWithRetry(sig => supabase.from('scores').select('group_points').eq('user_id', user.id).single().abortSignal(sig)))
+      }
+      const [settingsRes, matchesRes, picksRes, scoreRes] = await Promise.all(queries)
 
       const lockedVal = settingsRes?.data?.bracket_picks_locked ?? false
       const phaseVal  = settingsRes?.data?.phase ?? 1
@@ -124,14 +126,18 @@ export default function BracketPicks() {
       if (picksRes?.data) {
         picksRes.data.forEach(p => {
           pickMap[p.match_id] = {
-            picked_winner:       p.picked_winner,
-            tb1:                 p.tiebreaker_score1,
-            tb2:                 p.tiebreaker_score2,
+            picked_winner:     p.picked_winner,
+            tb1:               p.tiebreaker_score1,
+            tb2:               p.tiebreaker_score2,
           }
         })
         setMyPicks(pickMap)
       }
-      setCached(cacheKey, { matches: matchData, myPicks: pickMap, results: resultMap, locked: lockedVal, phase: phaseVal })
+
+      const gPts = scoreRes?.data?.group_points ?? 0
+      setGroupPts(gPts)
+
+      setCached(cacheKey, { matches: matchData, myPicks: pickMap, results: resultMap, locked: lockedVal, phase: phaseVal, groupPts: gPts })
     } catch {
       if (!getCached(cacheKey)) setError('Failed to load bracket')
     } finally {
@@ -264,19 +270,28 @@ export default function BracketPicks() {
 
       {/* Points banner */}
       <div className="pts-banner">
+        {groupPts !== null && (
+          <>
+            <div className="pts-item">
+              <div className="pts-val">{groupPts}</div>
+              <div className="pts-label">Group pts</div>
+            </div>
+            <div className="pts-sep">+</div>
+          </>
+        )}
         <div className="pts-item">
           <div className="pts-val">{currentPts}</div>
-          <div className="pts-label">Current pts</div>
+          <div className="pts-label">Bracket pts</div>
         </div>
         <div className="pts-sep">+</div>
         <div className="pts-item potential">
           <div className="pts-val">{potentialPts}</div>
-          <div className="pts-label">Potential pts</div>
+          <div className="pts-label">Potential</div>
         </div>
         <div className="pts-sep">=</div>
         <div className="pts-item max">
-          <div className="pts-val">{currentPts + potentialPts}</div>
-          <div className="pts-label">Max possible</div>
+          <div className="pts-val">{(groupPts ?? 0) + currentPts + potentialPts}</div>
+          <div className="pts-label">Max total</div>
         </div>
       </div>
 
