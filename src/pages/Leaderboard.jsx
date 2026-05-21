@@ -2,19 +2,23 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
+import { readWithRetry } from '../lib/readWithRetry'
 import { useLoadGuard } from '../lib/useLoadGuard.jsx'
+import { getCached, setCached } from '../lib/dataCache'
 import './Leaderboard.css'
+
+const CACHE_KEY = 'leaderboard'
 
 export default function Leaderboard() {
   const { user } = useAuth()
-  const [entries, setEntries]   = useState([])
-  const [settings, setSettings] = useState(null)
-  const [loading, setLoading]   = useState(true)
+  const cached = getCached(CACHE_KEY)
+  const [entries, setEntries]   = useState(cached?.entries || [])
+  const [settings, setSettings] = useState(cached?.settings || null)
+  const [loading, setLoading]   = useState(!cached)
   const [error, setError]       = useState('')
 
   useEffect(() => {
     loadLeaderboard()
-    // Subscribe to realtime updates
     const channel = supabase
       .channel('leaderboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, loadLeaderboard)
@@ -23,44 +27,41 @@ export default function Leaderboard() {
   }, [])
 
   async function loadLeaderboard() {
-    setLoading(true)
+    // Only block the UI with a spinner on first ever load
+    if (!getCached(CACHE_KEY)) setLoading(true)
     setError('')
-
-    // Safeguard: never spin forever — abort after 10s and show retry
-    const controller = new AbortController()
-    const safeguard = setTimeout(() => controller.abort(), 10000)
-
     try {
-      const [{ data: profiles, error: pErr }, { data: scores, error: sErr }, { data: settingsData }] = await Promise.all([
-        supabase.from('profiles').select('id, display_name, email').abortSignal(controller.signal),
-        supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(controller.signal),
-        supabase.from('settings').select('group_picks_locked').single().abortSignal(controller.signal),
+      const [profilesRes, scoresRes, settingsRes] = await Promise.all([
+        readWithRetry(sig => supabase.from('profiles').select('id, display_name').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings').select('group_picks_locked, phase').single().abortSignal(sig)),
       ])
-      if (pErr) throw pErr
-      if (sErr) throw sErr
+
+      if (profilesRes?.error) throw profilesRes.error
+      if (scoresRes?.error) throw scoresRes.error
+
+      const profiles = profilesRes?.data || []
+      const scores   = scoresRes?.data || []
+      const settingsData = settingsRes?.data || null
 
       const scoreMap = {}
-      ;(scores || []).forEach(s => { scoreMap[s.user_id] = s })
+      scores.forEach(s => { scoreMap[s.user_id] = s })
 
-      const merged = (profiles || []).map(p => ({
+      const merged = profiles.map(p => ({
         user_id: p.id,
-        profiles: { display_name: p.display_name, email: p.email },
-        group_points: scoreMap[p.id]?.group_points ?? 0,
+        profiles: { display_name: p.display_name },
+        group_points:   scoreMap[p.id]?.group_points   ?? 0,
         bracket_points: scoreMap[p.id]?.bracket_points ?? 0,
-        total_points: scoreMap[p.id]?.total_points ?? 0,
+        total_points:   scoreMap[p.id]?.total_points   ?? 0,
       }))
+      merged.sort((a, b) => b.total_points - a.total_points || (a.profiles.display_name || '').localeCompare(b.profiles.display_name || ''))
 
-      merged.sort((a, b) => b.total_points - a.total_points || a.profiles.display_name.localeCompare(b.profiles.display_name))
       setEntries(merged)
       setSettings(settingsData)
+      setCached(CACHE_KEY, { entries: merged, settings: settingsData })
     } catch (err) {
-      if (err.name === 'AbortError' || err.message?.toLowerCase().includes('abort')) {
-        setError('Server is waking up — tap retry')
-      } else {
-        setError('Failed to load leaderboard')
-      }
+      if (!entries.length) setError('Failed to load leaderboard')
     } finally {
-      clearTimeout(safeguard)
       setLoading(false)
     }
   }

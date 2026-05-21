@@ -6,33 +6,37 @@ import { BRACKET_POINTS, ROUND_LABELS } from '../data/scoring'
 import { saveWithRetry } from '../lib/saveWithRetry'
 import { readWithRetry } from '../lib/readWithRetry'
 import { useLoadGuard } from '../lib/useLoadGuard.jsx'
+import { getCached, setCached } from '../lib/dataCache'
 import './BracketPicks.css'
 
 const ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'THIRD', 'FINAL']
 
 export default function BracketPicks() {
   const { user } = useAuth()
-  const [matches, setMatches]         = useState([])
-  const [myPicks, setMyPicks]         = useState({})   // { matchId: { picked_winner, tb1, tb2 } }
-  const [results, setResults]         = useState({})   // { matchId: actual_winner }
-  const [locked, setLocked]           = useState(false)
-  const [phase, setPhase]             = useState(1)
+  const cacheKey = `bracket-picks-${user?.id || 'anon'}`
+  const cached = getCached(cacheKey)
+
+  const [matches, setMatches]         = useState(cached?.matches || [])
+  const [myPicks, setMyPicks]         = useState(cached?.myPicks || {})
+  const [results, setResults]         = useState(cached?.results || {})
+  const [locked, setLocked]           = useState(cached?.locked || false)
+  const [phase, setPhase]             = useState(cached?.phase || 1)
   const [activeRound, setActiveRound] = useState('R32')
   const [saving, setSaving]           = useState(false)
   const [saveStatus, setSaveStatus]   = useState('')
   const [saved, setSaved]             = useState(false)
   const [error, setError]             = useState('')
-  const [loading, setLoading]         = useState(true)
+  const [loading, setLoading]         = useState(!cached)
 
   useEffect(() => {
     loadData()
   }, [user?.id])
 
   async function loadData() {
-    setLoading(true)
+    if (!getCached(cacheKey)) setLoading(true)
     try {
       const baseQueries = [
-        readWithRetry(sig => supabase.from('settings').select('*').single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings').select('phase, bracket_picks_locked').single().abortSignal(sig)),
         readWithRetry(sig => supabase.from('bracket_matches').select('*').order('round_order').order('match_number').abortSignal(sig)),
       ]
       if (user?.id) {
@@ -41,10 +45,10 @@ export default function BracketPicks() {
 
       const [settingsRes, matchesRes, picksRes] = await Promise.all(baseQueries)
 
-      if (settingsRes?.data) {
-        setLocked(settingsRes.data.bracket_picks_locked)
-        setPhase(settingsRes.data.phase || 1)
-      }
+      const lockedVal = settingsRes?.data?.bracket_picks_locked ?? false
+      const phaseVal  = settingsRes?.data?.phase ?? 1
+      setLocked(lockedVal)
+      setPhase(phaseVal)
 
       const matchData = matchesRes?.data || []
       setMatches(matchData)
@@ -54,8 +58,8 @@ export default function BracketPicks() {
       })
       setResults(resultMap)
 
+      const pickMap = {}
       if (picksRes?.data) {
-        const pickMap = {}
         picksRes.data.forEach(p => {
           pickMap[p.match_id] = {
             picked_winner: p.picked_winner,
@@ -65,8 +69,10 @@ export default function BracketPicks() {
         })
         setMyPicks(pickMap)
       }
+
+      setCached(cacheKey, { matches: matchData, myPicks: pickMap, results: resultMap, locked: lockedVal, phase: phaseVal })
     } catch (e) {
-      setError('Failed to load bracket')
+      if (!getCached(cacheKey)) setError('Failed to load bracket')
     } finally {
       setLoading(false)
     }

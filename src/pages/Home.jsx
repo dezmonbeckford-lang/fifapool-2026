@@ -3,11 +3,14 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { readWithRetry } from '../lib/readWithRetry'
+import { getCached, setCached } from '../lib/dataCache'
 import './Home.css'
+
+const CACHE_KEY = 'home-stats'
 
 export default function Home() {
   const { user } = useAuth()
-  const [stats, setStats] = useState(null)
+  const [stats, setStats] = useState(getCached(CACHE_KEY))
 
   useEffect(() => { loadStats() }, [])
 
@@ -23,11 +26,13 @@ export default function Home() {
         readWithRetry(sig => supabase.from('profiles')
           .select('id', { count: 'exact', head: true }).abortSignal(sig)),
       ])
-      setStats({
+      const fresh = {
         top3: scores?.data || [],
         settings: settings?.data || {},
         playerCount: countRes?.count || 0,
-      })
+      }
+      setStats(fresh)
+      setCached(CACHE_KEY, fresh)
     } catch { /* non-fatal — home page degrades gracefully */ }
   }
 

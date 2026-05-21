@@ -5,57 +5,63 @@ import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
 import { saveWithRetry } from '../lib/saveWithRetry'
 import { readWithRetry } from '../lib/readWithRetry'
 import { useLoadGuard } from '../lib/useLoadGuard.jsx'
+import { getCached, setCached, bustCache } from '../lib/dataCache'
 import './Picks.css'
 
 export default function Picks() {
   const { user } = useAuth()
   const wildcardRef = useRef(null)
+  const cacheKey = `picks-${user?.id}`
+  const cached = getCached(cacheKey)
 
-  const [locked, setLocked] = useState(false)
-  const [groupPicks, setGroupPicks] = useState(() => {
+  const emptyGroupPicks = () => {
     const init = {}
     GROUPS.forEach(g => { init[g.id] = { winner: '', runnerUp: '' } })
     return init
-  })
-  const [wildcardPicks, setWildcardPicks] = useState([])
-  const [step, setStep] = useState(1) // 1 = group picks, 2 = wildcard picks
+  }
+
+  const [locked, setLocked] = useState(cached?.locked || false)
+  const [groupPicks, setGroupPicks] = useState(cached?.groupPicks || emptyGroupPicks())
+  const [wildcardPicks, setWildcardPicks] = useState(cached?.wildcardPicks || [])
+  const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!cached)
 
   useEffect(() => {
     if (user?.id) loadData()
   }, [user?.id])
 
   async function loadData() {
-    setLoading(true)
+    if (!getCached(cacheKey)) setLoading(true)
     try {
       const [settingsRes, gpRes, wpRes] = await Promise.all([
-        readWithRetry(sig => supabase.from('settings').select('*').single().abortSignal(sig)),
-        readWithRetry(sig => supabase.from('group_picks').select('*').eq('user_id', user.id).abortSignal(sig)),
+        readWithRetry(sig => supabase.from('settings').select('group_picks_locked').single().abortSignal(sig)),
+        readWithRetry(sig => supabase.from('group_picks').select('group_id, winner, runner_up').eq('user_id', user.id).abortSignal(sig)),
         readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', user.id).abortSignal(sig)),
       ])
 
-      if (settingsRes?.data) setLocked(settingsRes.data.group_picks_locked)
+      const lockedVal = settingsRes?.data?.group_picks_locked ?? false
+      setLocked(lockedVal)
 
       const gp_data = gpRes?.data || []
+      let parsedPicks = emptyGroupPicks()
       if (gp_data.length > 0) {
-        const parsed = {}
         gp_data.forEach(row => {
-          parsed[row.group_id] = { winner: row.winner || '', runnerUp: row.runner_up || '' }
+          parsedPicks[row.group_id] = { winner: row.winner || '', runnerUp: row.runner_up || '' }
         })
-        GROUPS.forEach(g => {
-          if (!parsed[g.id]) parsed[g.id] = { winner: '', runnerUp: '' }
-        })
-        setGroupPicks(parsed)
+        setGroupPicks(parsedPicks)
       }
 
       const wp_data = wpRes?.data || []
-      if (wp_data.length > 0) setWildcardPicks(wp_data.map(r => r.team))
+      const wc = wp_data.map(r => r.team)
+      if (wp_data.length > 0) setWildcardPicks(wc)
+
+      setCached(cacheKey, { locked: lockedVal, groupPicks: parsedPicks, wildcardPicks: wc })
     } catch {
-      setError('Failed to load picks. Check your connection.')
+      if (!getCached(cacheKey)) setError('Failed to load picks. Check your connection.')
     } finally {
       setLoading(false)
     }
@@ -168,6 +174,7 @@ export default function Picks() {
 
       setSaveStatus('')
       setSaved(true)
+      bustCache(cacheKey)  // force fresh load next visit
       setTimeout(() => setSaved(false), 4000)
     } catch (err) {
       setError(err.message || 'Failed to save picks. Try again.')
