@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { supabase } from '../lib/supabase'
 import { GROUPS, TEAM_FLAGS, WILDCARD_COUNT } from '../data/groups'
@@ -21,6 +22,7 @@ function clearDraft(userId) {
 
 export default function Picks() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const wildcardRef = useRef(null)
   const mountedRef  = useRef(true)
   const cacheKey = `picks-${user?.id}`
@@ -210,6 +212,7 @@ export default function Picks() {
       bustCache(cacheKey)  // force fresh load next visit
       clearDraft(user.id)  // picks are saved — no need to keep the draft
       setTimeout(() => setSaved(false), 4000)
+      return true
     } catch (err) {
       setError(err.message || 'Failed to save picks. Try again.')
       return false
@@ -369,7 +372,7 @@ export default function Picks() {
             {!locked && (
               <button
                 className="btn btn-primary btn-lg"
-                onClick={handleSave}
+                onClick={async () => { const ok = await handleSave(); if (ok === true) navigate('/') }}
                 disabled={saving}
               >
                 {saving ? (saveStatus || 'Saving…') : '💾 Save All Picks'}

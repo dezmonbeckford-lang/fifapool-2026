@@ -96,7 +96,7 @@ export default function Home() {
         {user && myPicksStatus && !groupLocked && (
           myPicksStatus.allDone ? (
             <div className="picks-complete-banner">
-              ✅ All picks submitted! You can still edit until the first game kicks off.
+              ✅ All picks submitted ({myPicksStatus.groupsDone + myPicksStatus.wildcardDone}/{GROUPS.length + WILDCARD_COUNT})! You can still edit until the first game kicks off.
             </div>
           ) : myPicksStatus.groupsDone > 0 || myPicksStatus.wildcardDone > 0 ? (
             <div className="picks-incomplete-banner">
