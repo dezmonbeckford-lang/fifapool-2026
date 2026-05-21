@@ -180,30 +180,38 @@ export default function BracketPicks() {
     const rows = Object.entries(myPicks)
       .filter(([, v]) => v.picked_winner)
       .map(([matchId, v]) => ({
-        user_id:             user.id,
-        match_id:            matchId,
-        picked_winner:       v.picked_winner,
-        tiebreaker_score1:   v.tb1 ?? null,
-        tiebreaker_score2:   v.tb2 ?? null,
+        user_id:           user.id,
+        match_id:          matchId,
+        picked_winner:     v.picked_winner,
+        tiebreaker_score1: v.tb1 ?? null,
+        tiebreaker_score2: v.tb2 ?? null,
       }))
     try {
-      if (rows.length > 0) {
-        await saveWithRetry(
-          async (signal) => {
-            const { error: err } = await supabase
+      await saveWithRetry(
+        async (signal) => {
+          // Clear existing picks first, then insert fresh — avoids any conflict issues
+          const { error: delErr } = await supabase
+            .from('bracket_picks')
+            .delete()
+            .eq('user_id', user.id)
+            .abortSignal(signal)
+          if (delErr) throw new Error(`Clear picks: ${delErr.message}`)
+
+          if (rows.length > 0) {
+            const { error: insErr } = await supabase
               .from('bracket_picks')
-              .upsert(rows, { onConflict: 'user_id,match_id' })
+              .insert(rows)
               .abortSignal(signal)
-            if (err) throw err
-          },
-          { onRetry: () => setSaveStatus('Retrying…') }
-        )
-      }
+            if (insErr) throw new Error(`Save picks: ${insErr.message}`)
+          }
+        },
+        { onRetry: () => setSaveStatus('Retrying…') }
+      )
       setSaveStatus('')
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (e) {
-      setError(e.message || 'Failed to save')
+      setError(e.message || 'Failed to save picks. Try again.')
     } finally {
       setSaving(false)
       setSaveStatus('')
