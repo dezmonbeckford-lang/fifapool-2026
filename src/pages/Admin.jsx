@@ -33,9 +33,12 @@ export default function Admin() {
 
   async function saveSettings() {
     setSaving(true)
-    const payload = { id: 1, ...settings }
-    if (payload.bracket_unlock_at && typeof payload.bracket_unlock_at === 'string' && !payload.bracket_unlock_at.includes('Z')) {
-      payload.bracket_unlock_at = new Date(payload.bracket_unlock_at).toISOString()
+    // Only send the fields we actually manage — exclude auto-generated or legacy columns
+    const payload = {
+      id: 1,
+      phase: settings.phase,
+      group_picks_locked: settings.group_picks_locked,
+      bracket_picks_locked: settings.bracket_picks_locked,
     }
     try {
       await saveWithRetry(async (signal) => {
@@ -80,16 +83,6 @@ export default function Admin() {
     } finally {
       setSaving(false)
     }
-  }
-
-  // Format stored UTC timestamp to datetime-local string
-  function toDatetimeLocal(val) {
-    if (!val) return ''
-    try {
-      const d = new Date(val)
-      const pad = n => String(n).padStart(2, '0')
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-    } catch { return '' }
   }
 
   if (loading || !profile?.is_admin) {
@@ -173,20 +166,6 @@ export default function Admin() {
             >
               {settings.bracket_picks_locked ? '🔒 Locked' : '🔓 Open'}
             </button>
-          </div>
-
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">Bracket Unlock Date &amp; Time</div>
-              <div className="setting-desc">When bracket picks open to users (your local time)</div>
-            </div>
-            <input
-              type="datetime-local"
-              className="input"
-              style={{ width: 'auto' }}
-              value={toDatetimeLocal(settings.bracket_unlock_at)}
-              onChange={e => setSettings(s => ({ ...s, bracket_unlock_at: e.target.value }))}
-            />
           </div>
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
