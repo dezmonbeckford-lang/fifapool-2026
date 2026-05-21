@@ -36,17 +36,26 @@ export default function App() {
   useEffect(() => {
     startKeepAlive()
 
-    // When the user returns to the tab/app after being away:
-    // 1. Refresh the Supabase auth session so expired tokens are renewed
-    // 2. Resume the keep-alive ping immediately
+    let hiddenAt = null
+    const RELOAD_AFTER_MS = 5 * 60 * 1000 // 5 minutes away → full reload
+
     function onVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        // This triggers onAuthStateChange(TOKEN_REFRESHED) if the token expired
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        stopKeepAlive()
+      } else {
+        const awayMs = hiddenAt ? Date.now() - hiddenAt : 0
+        hiddenAt = null
+
+        if (awayMs > RELOAD_AFTER_MS) {
+          // Been away long enough that state is likely stale — just reload cleanly
+          window.location.reload()
+          return
+        }
+
+        // Short absence — just refresh auth token and resume ping
         supabase.auth.getSession()
         startKeepAlive()
-      } else {
-        // Pause ping while backgrounded — browser throttles timers anyway
-        stopKeepAlive()
       }
     }
 
