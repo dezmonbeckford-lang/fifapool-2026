@@ -596,7 +596,7 @@ function BracketResultsTab({ onMsg }) {
         .update({ actual_winner: null, result_entered: false })
         .eq('round', 'R32')
       if (e2) throw e2
-      const { error: e3 } = await supabase.rpc('reset_bracket_scores')
+      const { error: e3 } = await supabase.rpc('recalculate_bracket_scores')
       if (e3) throw e3
       setPicks({})
       setFinalScores({})
@@ -633,8 +633,9 @@ function BracketResultsTab({ onMsg }) {
       const { error } = await supabase.from('bracket_matches').update(payload).eq('id', match.id)
       if (error) throw error
 
-      // Score all players who picked this match
-      supabase.rpc('score_bracket_match', { match_id: match.id })
+      // Recalculate all bracket scores from scratch (reliable, no fire-and-forget)
+      const { error: scoreErr } = await supabase.rpc('recalculate_bracket_scores')
+      if (scoreErr) throw scoreErr
 
       // Clear the pending pick for this match
       setPicks(prev => { const n = { ...prev }; delete n[match.id]; return n })
