@@ -73,6 +73,46 @@ function isGroupLabel(val) {
   return val && (val.startsWith('Winner Group') || val.startsWith('Runner-up Group'))
 }
 
+// ── Countdown to bracket open ────────────────────────────────────
+// June 28 2026 12:01 AM Eastern (EDT = UTC-4)
+const BRACKET_OPENS = new Date('2026-06-28T04:01:00Z')
+
+function useCountdown(target) {
+  const calc = () => {
+    const diff = target - Date.now()
+    if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0, done: true }
+    return {
+      days:    Math.floor(diff / 86400000),
+      hours:   Math.floor((diff % 86400000) / 3600000),
+      minutes: Math.floor((diff % 3600000)  / 60000),
+      seconds: Math.floor((diff % 60000)    / 1000),
+      done:    false,
+    }
+  }
+  const [tick, setTick] = useState(calc)
+  useEffect(() => {
+    const id = setInterval(() => setTick(calc()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return tick
+}
+
+function Countdown({ target }) {
+  const { days, hours, minutes, seconds, done } = useCountdown(target)
+  if (done) return <p style={{ color: 'var(--accent)', fontWeight: 700 }}>🏆 Bracket is now open!</p>
+  return (
+    <div className="countdown">
+      <div className="cd-unit"><span>{String(days).padStart(2, '0')}</span><label>Days</label></div>
+      <span className="cd-sep">:</span>
+      <div className="cd-unit"><span>{String(hours).padStart(2, '0')}</span><label>Hours</label></div>
+      <span className="cd-sep">:</span>
+      <div className="cd-unit"><span>{String(minutes).padStart(2, '0')}</span><label>Mins</label></div>
+      <span className="cd-sep">:</span>
+      <div className="cd-unit"><span>{String(seconds).padStart(2, '0')}</span><label>Secs</label></div>
+    </div>
+  )
+}
+
 // ── Component ────────────────────────────────────────────────────
 export default function BracketPicks() {
   const { user } = useAuth()
@@ -230,8 +270,9 @@ export default function BracketPicks() {
         <div className="bls-card card">
           <div className="bls-icon">🏆</div>
           <h2>Bracket Picks Opening Soon</h2>
-          <p>The Round of 32 bracket will open once the group stage is complete.</p>
-          <p className="bls-sub">Check back after the group stage — you'll be able to pick winners for every round all the way to the Final.</p>
+          <p>The Round of 32 bracket opens after the group stage wraps up.</p>
+          <Countdown target={BRACKET_OPENS} />
+          <p className="bls-sub">Come back on June 28 — you'll pick winners for every round all the way to the Final.</p>
         </div>
       </div>
     )
