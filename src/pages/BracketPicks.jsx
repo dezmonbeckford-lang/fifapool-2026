@@ -270,9 +270,9 @@ export default function BracketPicks() {
         <div className="bls-card card">
           <div className="bls-icon">🏆</div>
           <h2>Bracket Picks Opening Soon</h2>
-          <p>The Round of 32 bracket opens after the group stage wraps up.</p>
+          <p>Picks open June 28 at 12:01 AM — <strong>first match kicks off at 3 PM that day.</strong> You'll have one shot to lock in your bracket before it's over.</p>
           <Countdown target={BRACKET_OPENS} />
-          <p className="bls-sub">Come back on June 28 — you'll pick winners for every round all the way to the Final.</p>
+          <p className="bls-sub">⚠️ Once the first game starts, bracket picks lock for good. Don't miss it.</p>
         </div>
       </div>
     )
