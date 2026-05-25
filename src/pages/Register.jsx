@@ -27,7 +27,12 @@ export default function Register() {
         setConfirmSent(true)
       }
     } catch (err) {
-      setError(err.message || 'Registration failed')
+      const msg = err.message || ''
+      if (msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit') || msg.toLowerCase().includes('too many')) {
+        setError("Sorry, we've reached our hourly sign-up limit. Please come back in 1 hour and try again.")
+      } else {
+        setError(msg || 'Registration failed')
+      }
     } finally {
       setLoading(false)
     }
