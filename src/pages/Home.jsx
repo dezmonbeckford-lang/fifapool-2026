@@ -13,7 +13,20 @@ export default function Home() {
   const { user } = useAuth()
   const [stats, setStats] = useState(getCached(CACHE_KEY))
   const [myPicksStatus, setMyPicksStatus] = useState(null)
+  const [copied, setCopied] = useState(false)
   const mountedRef = useRef(true)
+
+  function handleShare() {
+    const url = 'https://fifapool-2026.vercel.app'
+    if (navigator.share) {
+      navigator.share({ title: 'FifaPool 2026', text: "Join my World Cup prediction pool!", url })
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2500)
+      })
+    }
+  }
 
   useEffect(() => {
     mountedRef.current = true
@@ -174,6 +187,10 @@ export default function Home() {
           <p>Works like a real app on your phone. Tap Share → Add to Home Screen in Safari.</p>
         </div>
       </div>
+
+      <button className="share-btn" onClick={handleShare}>
+        {copied ? '✅ Link copied!' : '🔗 Share with friends'}
+      </button>
     </div>
   )
 }
