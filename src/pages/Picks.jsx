@@ -223,15 +223,15 @@ export default function Picks() {
 
     } catch (err) {
       // Save may have timed out client-side but still landed on the server.
-      // Verify both tables before showing an error.
+      // Verify both tables — use readWithRetry so this can't hang forever.
       try {
         setSaveStatus('Verifying…')
-        const [{ data: gpData }, { data: wpData }] = await Promise.all([
-          supabase.from('group_picks').select('group_id').eq('user_id', user.id),
-          supabase.from('wildcard_picks').select('team').eq('user_id', user.id),
+        const [gpRes, wpRes] = await Promise.all([
+          readWithRetry(sig => supabase.from('group_picks').select('group_id').eq('user_id', user.id).abortSignal(sig)),
+          readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', user.id).abortSignal(sig)),
         ])
-        const gpOk = (gpData?.length ?? 0) >= groupRows.length && groupRows.length > 0
-        const wpOk = wildcardPicks.length === 0 || (wpData?.length ?? 0) >= wildcardPicks.length
+        const gpOk = (gpRes?.data?.length ?? 0) >= groupRows.length && groupRows.length > 0
+        const wpOk = wildcardPicks.length === 0 || (wpRes?.data?.length ?? 0) >= wildcardPicks.length
         if (gpOk && wpOk) {
           setSaveStatus('')
           setSaved(true)
@@ -240,7 +240,7 @@ export default function Picks() {
           setTimeout(() => setSaved(false), 4000)
           return true
         }
-      } catch { /* verification failed — fall through */ }
+      } catch { /* verification timed out — fall through to error */ }
       setError('Could not save picks. Check your connection and try again — your progress is safe.')
       return false
     } finally {
