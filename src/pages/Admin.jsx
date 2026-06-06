@@ -958,34 +958,26 @@ function PlayersTab({ onMsg }) {
 
   async function loadPlayers() {
     try {
-      const [profRes, scoreRes, gpRes, wpRes] = await Promise.all([
+      const [profRes, scoreRes, countsRes] = await Promise.all([
         readWithRetry(sig => supabase.from('profiles').select('id, display_name, email, is_admin, created_at').order('created_at').abortSignal(sig)),
         readWithRetry(sig => supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(sig)),
-        readWithRetry(sig => supabase.from('group_picks').select('user_id, winner, runner_up').abortSignal(sig)),
-        readWithRetry(sig => supabase.from('wildcard_picks').select('user_id').abortSignal(sig)),
+        // SECURITY DEFINER RPC bypasses RLS so we see ALL users' picks, not just ours
+        readWithRetry(sig => supabase.rpc('get_all_pick_counts').abortSignal(sig)),
       ])
       const scoreMap = {}
       ;(scoreRes?.data || []).forEach(s => { scoreMap[s.user_id] = s })
 
-      // Count complete groups (both winner + runner_up filled) per user
-      const gpMap = {}
-      ;(gpRes?.data || []).forEach(row => {
-        if (!gpMap[row.user_id]) gpMap[row.user_id] = { any: 0, complete: 0 }
-        gpMap[row.user_id].any++
-        if (row.winner && row.runner_up) gpMap[row.user_id].complete++
-      })
-
-      // Count wildcard picks per user
-      const wpMap = {}
-      ;(wpRes?.data || []).forEach(row => { wpMap[row.user_id] = (wpMap[row.user_id] || 0) + 1 })
+      const countsMap = {}
+      ;(countsRes?.data || []).forEach(r => { countsMap[r.user_id] = r })
 
       setPlayers((profRes?.data || []).map(p => {
-        const gp = gpMap[p.id] || { any: 0, complete: 0 }
-        const wp = wpMap[p.id] || 0
-        const pickStatus = gp.complete === 12 && wp === 8 ? 'complete'
-          : gp.any > 0 || wp > 0 ? 'partial'
+        const counts = countsMap[p.id] || { groups_complete: 0, wildcards_count: 0 }
+        const gc = counts.groups_complete
+        const wc = counts.wildcards_count
+        const pickStatus = gc === 12 && wc === 8 ? 'complete'
+          : gc > 0 || wc > 0 ? 'partial'
           : 'none'
-        return { ...p, score: scoreMap[p.id] || null, pickStatus, groupsDone: gp.complete, wildcardsDone: wp }
+        return { ...p, score: scoreMap[p.id] || null, pickStatus, groupsDone: gc, wildcardsDone: wc }
       }))
     } catch { /* non-fatal */ } finally {
       setLoading(false)
