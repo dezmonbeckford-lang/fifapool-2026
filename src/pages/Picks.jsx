@@ -222,7 +222,26 @@ export default function Picks() {
       setTimeout(() => setSaved(false), 4000)
       return true
     } catch (err) {
-      setError(err.message || 'Failed to save picks. Try again.')
+      // The save may have timed out on the client but still succeeded on the server.
+      // Do a quick verification — if picks are actually in the DB, treat it as success.
+      try {
+        setSaveStatus('Verifying…')
+        const { data: verifyData } = await supabase
+          .from('group_picks').select('group_id', { count: 'exact', head: false })
+          .eq('user_id', user.id)
+        const savedCount = verifyData?.length ?? 0
+        const expectedCount = groupRows.length
+        if (savedCount > 0 && savedCount >= expectedCount) {
+          // Picks are actually there — save succeeded despite the timeout
+          setSaveStatus('')
+          setSaved(true)
+          bustCache(cacheKey)
+          clearDraft(user.id)
+          setTimeout(() => setSaved(false), 4000)
+          return true
+        }
+      } catch { /* verification itself failed — fall through to error */ }
+      setError('Having trouble connecting. If this keeps happening, pull down to refresh and check your picks are still there.')
       return false
     } finally {
       setSaving(false)
