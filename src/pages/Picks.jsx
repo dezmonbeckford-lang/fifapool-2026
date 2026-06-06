@@ -23,8 +23,9 @@ function clearDraft(userId) {
 export default function Picks() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const wildcardRef = useRef(null)
-  const mountedRef  = useRef(true)
+  const wildcardRef   = useRef(null)
+  const mountedRef    = useRef(true)
+  const dataLoadedRef = useRef(false)  // guards auto-save from firing before DB data arrives
   const cacheKey = `picks-${user?.id}`
   const cached = getCached(cacheKey)
 
@@ -53,9 +54,11 @@ export default function Picks() {
     return () => { mountedRef.current = false }
   }, [user?.id])
 
-  // Auto-save picks to localStorage draft whenever they change
+  // Auto-save picks to localStorage draft — but ONLY after DB data has loaded.
+  // Without this guard the initial empty state fires before loadData returns and
+  // overwrites any existing draft with blank picks.
   useEffect(() => {
-    if (user?.id && !locked) saveDraft(user.id, groupPicks, wildcardPicks)
+    if (user?.id && !locked && dataLoadedRef.current) saveDraft(user.id, groupPicks, wildcardPicks)
   }, [groupPicks, wildcardPicks])
 
   async function loadData() {
@@ -87,6 +90,11 @@ export default function Picks() {
       if (wp_data.length > 0) setWildcardPicks(wc)
 
       setCached(cacheKey, { locked: lockedVal, groupPicks: parsedPicks, wildcardPicks: wc })
+
+      // DB is now the source of truth — clear any stale draft so it can't
+      // override real picks on the next visit, then allow auto-save going forward.
+      clearDraft(user.id)
+      dataLoadedRef.current = true
     } catch {
       if (mountedRef.current && !getCached(cacheKey)) setError('Failed to load picks. Check your connection.')
     } finally {
