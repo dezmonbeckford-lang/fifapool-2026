@@ -958,20 +958,35 @@ function PlayersTab({ onMsg }) {
 
   async function loadPlayers() {
     try {
-      const [profRes, scoreRes, gpRes] = await Promise.all([
+      const [profRes, scoreRes, gpRes, wpRes] = await Promise.all([
         readWithRetry(sig => supabase.from('profiles').select('id, display_name, email, is_admin, created_at').order('created_at').abortSignal(sig)),
         readWithRetry(sig => supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(sig)),
-        readWithRetry(sig => supabase.from('group_picks').select('user_id').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('group_picks').select('user_id, winner, runner_up').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('wildcard_picks').select('user_id').abortSignal(sig)),
       ])
       const scoreMap = {}
       ;(scoreRes?.data || []).forEach(s => { scoreMap[s.user_id] = s })
-      const gpSet = new Set()
-      ;(gpRes?.data || []).forEach(p => gpSet.add(p.user_id))
-      setPlayers((profRes?.data || []).map(p => ({
-        ...p,
-        score: scoreMap[p.id] || null,
-        hasPicks: gpSet.has(p.id),
-      })))
+
+      // Count complete groups (both winner + runner_up filled) per user
+      const gpMap = {}
+      ;(gpRes?.data || []).forEach(row => {
+        if (!gpMap[row.user_id]) gpMap[row.user_id] = { any: 0, complete: 0 }
+        gpMap[row.user_id].any++
+        if (row.winner && row.runner_up) gpMap[row.user_id].complete++
+      })
+
+      // Count wildcard picks per user
+      const wpMap = {}
+      ;(wpRes?.data || []).forEach(row => { wpMap[row.user_id] = (wpMap[row.user_id] || 0) + 1 })
+
+      setPlayers((profRes?.data || []).map(p => {
+        const gp = gpMap[p.id] || { any: 0, complete: 0 }
+        const wp = wpMap[p.id] || 0
+        const pickStatus = gp.complete === 12 && wp === 8 ? 'complete'
+          : gp.any > 0 || wp > 0 ? 'partial'
+          : 'none'
+        return { ...p, score: scoreMap[p.id] || null, pickStatus, groupsDone: gp.complete, wildcardsDone: wp }
+      }))
     } catch { /* non-fatal */ } finally {
       setLoading(false)
     }
@@ -1013,8 +1028,10 @@ function PlayersTab({ onMsg }) {
               <span className="player-name">{p.display_name}</span>
               <span className="player-email">{p.email}</span>
             </div>
-            <span className={`picks-badge${p.hasPicks ? ' done' : ''}`}>
-              {p.hasPicks ? '✓ Done' : '—'}
+            <span className={`picks-badge picks-badge--${p.pickStatus}`}>
+              {p.pickStatus === 'complete' ? '✅ Complete'
+                : p.pickStatus === 'partial' ? `⚠️ ${p.groupsDone}/12 grp · ${p.wildcardsDone}/8 wc`
+                : '— None'}
             </span>
             <span className="player-pts">{p.score?.total_points ?? 0}</span>
             <button

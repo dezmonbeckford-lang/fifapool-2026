@@ -186,53 +186,53 @@ export default function Picks() {
       }))
 
     try {
-      await saveWithRetry(
-        async (signal) => {
-          const [{ error: delGpErr }, { error: delWpErr }] = await Promise.all([
-            supabase.from('group_picks').delete().eq('user_id', user.id).abortSignal(signal),
-            supabase.from('wildcard_picks').delete().eq('user_id', user.id).abortSignal(signal),
-          ])
-          if (delGpErr) throw new Error(`Clear group picks: ${delGpErr.message}`)
-          if (delWpErr) throw new Error(`Clear wildcard picks: ${delWpErr.message}`)
+      // ── Save group picks (independent retry — never touches wildcards) ──
+      await saveWithRetry(async (signal) => {
+        const { error: delErr } = await supabase
+          .from('group_picks').delete().eq('user_id', user.id).abortSignal(signal)
+        if (delErr) throw new Error(delErr.message)
+        if (groupRows.length > 0) {
+          const { error: insErr } = await supabase
+            .from('group_picks').insert(groupRows).abortSignal(signal)
+          if (insErr) throw new Error(insErr.message)
+        }
+      }, { onRetry: () => setSaveStatus('Retrying group picks…') })
 
-          const inserts = []
-          if (groupRows.length > 0) {
-            inserts.push(
-              supabase.from('group_picks').insert(groupRows).abortSignal(signal)
-                .then(r => { if (r.error) throw new Error(`Group picks: ${r.error.message}`) })
-            )
-          }
-          if (wildcardPicks.length > 0) {
-            inserts.push(
-              supabase.from('wildcard_picks')
-                .insert(wildcardPicks.map(team => ({ user_id: user.id, team })))
-                .abortSignal(signal)
-                .then(r => { if (r.error) throw new Error(`Wildcard picks: ${r.error.message}`) })
-            )
-          }
-          await Promise.all(inserts)
-        },
-        { onRetry: () => setSaveStatus('Server warming up, retrying…') }
-      )
+      // ── Save wildcard picks (independent retry — group picks already safe) ──
+      setSaveStatus('Saving wildcard picks…')
+      await saveWithRetry(async (signal) => {
+        const { error: delErr } = await supabase
+          .from('wildcard_picks').delete().eq('user_id', user.id).abortSignal(signal)
+        if (delErr) throw new Error(delErr.message)
+        if (wildcardPicks.length > 0) {
+          const { error: insErr } = await supabase
+            .from('wildcard_picks')
+            .insert(wildcardPicks.map(team => ({ user_id: user.id, team })))
+            .abortSignal(signal)
+          if (insErr) throw new Error(insErr.message)
+        }
+      }, { onRetry: () => setSaveStatus('Retrying wildcard picks…') })
 
+      // ── Success ──────────────────────────────────────────────────
       setSaveStatus('')
       setSaved(true)
-      bustCache(cacheKey)  // force fresh load next visit
-      clearDraft(user.id)  // picks are saved — no need to keep the draft
+      bustCache(cacheKey)
+      clearDraft(user.id)
       setTimeout(() => setSaved(false), 4000)
       return true
+
     } catch (err) {
-      // The save may have timed out on the client but still succeeded on the server.
-      // Do a quick verification — if picks are actually in the DB, treat it as success.
+      // Save may have timed out client-side but still landed on the server.
+      // Verify both tables before showing an error.
       try {
         setSaveStatus('Verifying…')
-        const { data: verifyData } = await supabase
-          .from('group_picks').select('group_id', { count: 'exact', head: false })
-          .eq('user_id', user.id)
-        const savedCount = verifyData?.length ?? 0
-        const expectedCount = groupRows.length
-        if (savedCount > 0 && savedCount >= expectedCount) {
-          // Picks are actually there — save succeeded despite the timeout
+        const [{ data: gpData }, { data: wpData }] = await Promise.all([
+          supabase.from('group_picks').select('group_id').eq('user_id', user.id),
+          supabase.from('wildcard_picks').select('team').eq('user_id', user.id),
+        ])
+        const gpOk = (gpData?.length ?? 0) >= groupRows.length && groupRows.length > 0
+        const wpOk = wildcardPicks.length === 0 || (wpData?.length ?? 0) >= wildcardPicks.length
+        if (gpOk && wpOk) {
           setSaveStatus('')
           setSaved(true)
           bustCache(cacheKey)
@@ -240,8 +240,8 @@ export default function Picks() {
           setTimeout(() => setSaved(false), 4000)
           return true
         }
-      } catch { /* verification itself failed — fall through to error */ }
-      setError('Having trouble connecting. If this keeps happening, pull down to refresh and check your picks are still there.')
+      } catch { /* verification failed — fall through */ }
+      setError('Could not save picks. Check your connection and try again — your progress is safe.')
       return false
     } finally {
       setSaving(false)

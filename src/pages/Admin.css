@@ -264,7 +264,9 @@
 .player-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-email { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picks-badge { font-size: 12px; font-weight: 700; color: var(--text2); }
-.picks-badge.done { color: var(--accent); }
+.picks-badge--complete { color: var(--accent); }
+.picks-badge--partial  { color: #fbbf24; }
+.picks-badge--none     { color: var(--text2); opacity: 0.5; }
 .player-pts { font-weight: 700; font-size: 14px; }
 .toggle-btn-sm { padding: 4px 10px !important; font-size: 12px !important; min-width: 0 !important; }
 
