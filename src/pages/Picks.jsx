@@ -179,41 +179,23 @@ export default function Picks() {
     const groupRows = GROUPS
       .filter(g => groupPicks[g.id]?.winner || groupPicks[g.id]?.runnerUp)
       .map(g => ({
-        user_id: user.id,
-        group_id: g.id,
-        winner: groupPicks[g.id]?.winner || null,
-        runner_up: groupPicks[g.id]?.runnerUp || null,
+        group_id:  g.id,
+        winner:    groupPicks[g.id]?.winner    || null,
+        runner_up: groupPicks[g.id]?.runnerUp  || null,
       }))
 
     try {
-      // ── Save group picks (independent retry — never touches wildcards) ──
+      // Single atomic RPC — one network call, one DB transaction.
+      // Either everything saves or nothing does. No partial states.
       await saveWithRetry(async (signal) => {
-        const { error: delErr } = await supabase
-          .from('group_picks').delete().eq('user_id', user.id).abortSignal(signal)
-        if (delErr) throw new Error(delErr.message)
-        if (groupRows.length > 0) {
-          const { error: insErr } = await supabase
-            .from('group_picks').insert(groupRows).abortSignal(signal)
-          if (insErr) throw new Error(insErr.message)
-        }
-      }, { onRetry: () => setSaveStatus('Retrying group picks…') })
+        const { error } = await supabase.rpc('save_picks', {
+          p_user_id:        user.id,
+          p_group_picks:    groupRows,
+          p_wildcard_picks: wildcardPicks,
+        }).abortSignal(signal)
+        if (error) throw new Error(error.message)
+      }, { onRetry: () => setSaveStatus('Reconnecting…') })
 
-      // ── Save wildcard picks (independent retry — group picks already safe) ──
-      setSaveStatus('Saving wildcard picks…')
-      await saveWithRetry(async (signal) => {
-        const { error: delErr } = await supabase
-          .from('wildcard_picks').delete().eq('user_id', user.id).abortSignal(signal)
-        if (delErr) throw new Error(delErr.message)
-        if (wildcardPicks.length > 0) {
-          const { error: insErr } = await supabase
-            .from('wildcard_picks')
-            .insert(wildcardPicks.map(team => ({ user_id: user.id, team })))
-            .abortSignal(signal)
-          if (insErr) throw new Error(insErr.message)
-        }
-      }, { onRetry: () => setSaveStatus('Retrying wildcard picks…') })
-
-      // ── Success ──────────────────────────────────────────────────
       setSaveStatus('')
       setSaved(true)
       bustCache(cacheKey)
@@ -222,26 +204,7 @@ export default function Picks() {
       return true
 
     } catch (err) {
-      // Save may have timed out client-side but still landed on the server.
-      // Verify both tables — use readWithRetry so this can't hang forever.
-      try {
-        setSaveStatus('Verifying…')
-        const [gpRes, wpRes] = await Promise.all([
-          readWithRetry(sig => supabase.from('group_picks').select('group_id').eq('user_id', user.id).abortSignal(sig)),
-          readWithRetry(sig => supabase.from('wildcard_picks').select('team').eq('user_id', user.id).abortSignal(sig)),
-        ])
-        const gpOk = (gpRes?.data?.length ?? 0) >= groupRows.length && groupRows.length > 0
-        const wpOk = wildcardPicks.length === 0 || (wpRes?.data?.length ?? 0) >= wildcardPicks.length
-        if (gpOk && wpOk) {
-          setSaveStatus('')
-          setSaved(true)
-          bustCache(cacheKey)
-          clearDraft(user.id)
-          setTimeout(() => setSaved(false), 4000)
-          return true
-        }
-      } catch { /* verification timed out — fall through to error */ }
-      setError('Could not save picks. Check your connection and try again — your progress is safe.')
+      setError('Could not save picks. Check your connection and try again.')
       return false
     } finally {
       setSaving(false)
