@@ -17,6 +17,12 @@ Sentry.init({
   tracesSampleRate: 0,
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
+  // Filter out Supabase internal auth-lock noise — not actionable
+  beforeSend(event) {
+    const msg = event.exception?.values?.[0]?.value || ''
+    if (msg.includes('lock:sb-') || msg.includes('Lock was stolen')) return null
+    return event
+  },
   // Don't send errors in local dev
   enabled: import.meta.env.PROD,
 })
