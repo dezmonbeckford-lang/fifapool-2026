@@ -42,9 +42,10 @@ export default function App() {
     startKeepAlive()
 
     let hiddenAt = null
-    const RELOAD_AFTER_MS = 30 * 60 * 1000 // 30 minutes away → full reload (auth token lasts 1hr)
+    const RELOAD_AFTER_MS  = 3 * 60 * 1000  // 3 min away → full reload (clears stale connections)
+    const REFRESH_AFTER_MS = 15 * 1000       // 15 sec away → force session refresh
 
-    function onVisibilityChange() {
+    async function onVisibilityChange() {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now()
         stopKeepAlive()
@@ -53,14 +54,17 @@ export default function App() {
         hiddenAt = null
 
         if (awayMs > RELOAD_AFTER_MS) {
-          // Been away long enough that state is likely stale — just reload cleanly
+          // Been away long enough — Supabase connection is likely dead. Reload cleanly.
+          // Picks are safe: saved to DB before leaving, and localStorage draft survives reload.
           window.location.reload()
           return
         }
 
-        // Short/medium absence — just refresh auth token and resume ping
-        // Don't reload — would wipe any unsaved picks the user was working on
-        supabase.auth.getSession()
+        if (awayMs > REFRESH_AFTER_MS) {
+          // Short absence — force a real token refresh so next DB call doesn't fail silently
+          try { await supabase.auth.refreshSession() } catch { /* non-fatal */ }
+        }
+
         startKeepAlive()
       }
     }
