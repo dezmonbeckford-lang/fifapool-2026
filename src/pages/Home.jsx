@@ -20,6 +20,7 @@ export default function Home() {
     const url = 'https://fifapool-2026.vercel.app'
     if (navigator.share) {
       navigator.share({ title: 'FifaPool 2026', text: "Join my World Cup prediction pool!", url })
+        .catch(err => { if (err?.name !== 'AbortError') throw err }) // ignore user cancel
     } else {
       navigator.clipboard.writeText(url).then(() => {
         setCopied(true)
