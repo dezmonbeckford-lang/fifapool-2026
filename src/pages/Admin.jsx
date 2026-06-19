@@ -963,7 +963,7 @@ function PlayersTab({ onMsg }) {
   async function loadPlayers() {
     try {
       const [profRes, scoreRes, countsRes] = await Promise.all([
-        readWithRetry(sig => supabase.from('profiles').select('id, display_name, email, is_admin, created_at').order('created_at').abortSignal(sig)),
+        readWithRetry(sig => supabase.from('profiles').select('id, display_name, email, is_admin, paid, created_at').order('created_at').abortSignal(sig)),
         readWithRetry(sig => supabase.from('scores').select('user_id, group_points, bracket_points, total_points').abortSignal(sig)),
         // SECURITY DEFINER RPC bypasses RLS so we see ALL users' picks, not just ours
         readWithRetry(sig => supabase.rpc('get_all_pick_counts').abortSignal(sig)),
@@ -985,20 +985,6 @@ function PlayersTab({ onMsg }) {
       }))
     } catch { /* non-fatal */ } finally {
       setLoading(false)
-    }
-  }
-
-  async function toggleAdmin(userId, currentVal) {
-    if (!window.confirm(`${currentVal ? 'Remove' : 'Grant'} admin access for this user?`)) return
-    try {
-      await saveWithRetry(async (signal) => {
-        const { error } = await supabase.from('profiles').update({ is_admin: !currentVal }).eq('id', userId).abortSignal(signal)
-        if (error) throw error
-      })
-      onMsg(`✓ Admin access ${currentVal ? 'removed' : 'granted'}.`)
-      loadPlayers()
-    } catch (err) {
-      onMsg(`Error: ${err.message}`)
     }
   }
 
@@ -1025,17 +1011,19 @@ function PlayersTab({ onMsg }) {
       </div>
 
       <div className="players-table card">
-        <div className="players-header" style={{ gridTemplateColumns: '1fr 72px 56px 64px 56px' }}>
+        <div className="players-header" style={{ gridTemplateColumns: '1fr 80px 56px 70px' }}>
           <span>Player</span>
           <span>Picks</span>
           <span>Pts</span>
           <span>Paid</span>
-          <span>Admin</span>
         </div>
         {players.map(p => (
-          <div key={p.id} className="player-row" style={{ gridTemplateColumns: '1fr 72px 56px 64px 56px' }}>
+          <div key={p.id} className="player-row" style={{ gridTemplateColumns: '1fr 80px 56px 70px' }}>
             <div className="player-info">
-              <span className="player-name">{p.display_name}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="player-name">{p.display_name}</span>
+                {p.is_admin && <span className="badge badge-yellow" style={{ fontSize: 10 }}>Admin</span>}
+              </div>
               <span className="player-email">{p.email}</span>
             </div>
             <span className={`picks-badge picks-badge--${p.pickStatus}`}>
@@ -1049,13 +1037,7 @@ function PlayersTab({ onMsg }) {
               onClick={() => togglePaid(p.id, p.paid)}
               style={p.paid ? { background: 'rgba(16,185,129,0.15)', borderColor: '#10b981', color: '#10b981' } : {}}
             >
-              {p.paid ? '💚 Paid' : '—'}
-            </button>
-            <button
-              className={`toggle-btn toggle-btn-sm${p.is_admin ? ' on' : ''}`}
-              onClick={() => toggleAdmin(p.id, p.is_admin)}
-            >
-              {p.is_admin ? '✓' : '—'}
+              {p.paid ? '💚' : '—'}
             </button>
           </div>
         ))}
