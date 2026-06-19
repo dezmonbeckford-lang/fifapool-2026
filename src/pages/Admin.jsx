@@ -342,11 +342,15 @@ function GroupResultsTab({ onMsg }) {
       <div className="groups-results-grid">
         {GROUPS.map(group => {
           const r = results[group.id] || { winner: '', runnerUp: '' }
-          const done = existing[group.id]
+          const ex = existing[group.id]
+          const done    = ex?.winner && ex?.runnerUp
+          const partial = ex?.winner && !ex?.runnerUp
           return (
             <div key={group.id} className={`admin-group-card card${done ? ' done' : ''}`}>
               <div className="admin-group-label">
-                Group {group.id} {done && <span className="badge badge-green">Done</span>}
+                Group {group.id}{' '}
+                {done    && <span className="badge badge-green">Done</span>}
+                {partial && <span className="badge badge-yellow">Winner saved</span>}
               </div>
               <div className="admin-group-row">
                 <label className="label">🥇 Winner</label>
