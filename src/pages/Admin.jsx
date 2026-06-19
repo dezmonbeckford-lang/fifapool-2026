@@ -291,8 +291,8 @@ function GroupResultsTab({ onMsg }) {
     setSaving(true)
     try {
       const rows = Object.entries(results)
-        .filter(([, v]) => v.winner && v.runnerUp)
-        .map(([groupId, v]) => ({ group_id: groupId, winner: v.winner, runner_up: v.runnerUp }))
+        .filter(([, v]) => v.winner || v.runnerUp)  // allow partial results (winner only is fine)
+        .map(([groupId, v]) => ({ group_id: groupId, winner: v.winner || null, runner_up: v.runnerUp || null }))
 
       await saveWithRetry(async (signal) => {
         const [grRes, waDelRes] = await Promise.all([
