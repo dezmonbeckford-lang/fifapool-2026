@@ -121,11 +121,9 @@ export default function Home() {
           ) : null
         )}
 
-        {/* Payment banner */}
-        {user && profile && (
-          profile.paid
-            ? <div className="payment-banner paid">💚 Thanks for paying — you're all set!</div>
-            : <div className="payment-banner unpaid">💸 Entry fee outstanding — please e-transfer <strong>dezmon.beckford@hotmail.com</strong></div>
+        {/* Payment banner — only shows if unpaid, disappears once marked paid */}
+        {user && profile && !profile.paid && (
+          <div className="payment-banner unpaid">💸 Entry fee outstanding — please e-transfer <strong>dezmon.beckford@hotmail.com</strong></div>
         )}
 
         {!user ? (

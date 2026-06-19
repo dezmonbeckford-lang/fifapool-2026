@@ -989,14 +989,17 @@ function PlayersTab({ onMsg }) {
   }
 
   async function togglePaid(userId, currentVal) {
+    // Optimistic update — flip instantly, revert if DB fails
+    setPlayers(prev => prev.map(p => p.id === userId ? { ...p, paid: !currentVal } : p))
     try {
       await saveWithRetry(async (signal) => {
         const { error } = await supabase.from('profiles').update({ paid: !currentVal }).eq('id', userId).abortSignal(signal)
         if (error) throw error
       })
       onMsg(`✓ Marked as ${!currentVal ? 'paid' : 'unpaid'}.`)
-      loadPlayers()
     } catch (err) {
+      // Revert on failure
+      setPlayers(prev => prev.map(p => p.id === userId ? { ...p, paid: currentVal } : p))
       onMsg(`Error: ${err.message}`)
     }
   }
