@@ -10,7 +10,7 @@ import './Home.css'
 const CACHE_KEY = 'home-stats'
 
 export default function Home() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [stats, setStats] = useState(getCached(CACHE_KEY))
   const [myPicksStatus, setMyPicksStatus] = useState(null)
   const [copied, setCopied] = useState(false)
@@ -119,6 +119,13 @@ export default function Home() {
               {' '}<Link to="/picks">Finish your picks →</Link>
             </div>
           ) : null
+        )}
+
+        {/* Payment banner */}
+        {user && profile && (
+          profile.paid
+            ? <div className="payment-banner paid">💚 Thanks for paying — you're all set!</div>
+            : <div className="payment-banner unpaid">💸 Entry fee outstanding — please e-transfer <strong>dezmon.beckford@hotmail.com</strong></div>
         )}
 
         {!user ? (

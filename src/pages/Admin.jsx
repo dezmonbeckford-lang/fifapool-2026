@@ -981,7 +981,7 @@ function PlayersTab({ onMsg }) {
         const pickStatus = gc === 12 && wc === 8 ? 'complete'
           : gc > 0 || wc > 0 ? 'partial'
           : 'none'
-        return { ...p, score: scoreMap[p.id] || null, pickStatus, groupsDone: gc, wildcardsDone: wc }
+        return { ...p, score: scoreMap[p.id] || null, pickStatus, groupsDone: gc, wildcardsDone: wc, paid: p.paid ?? false }
       }))
     } catch { /* non-fatal */ } finally {
       setLoading(false)
@@ -1002,6 +1002,19 @@ function PlayersTab({ onMsg }) {
     }
   }
 
+  async function togglePaid(userId, currentVal) {
+    try {
+      await saveWithRetry(async (signal) => {
+        const { error } = await supabase.from('profiles').update({ paid: !currentVal }).eq('id', userId).abortSignal(signal)
+        if (error) throw error
+      })
+      onMsg(`✓ Marked as ${!currentVal ? 'paid' : 'unpaid'}.`)
+      loadPlayers()
+    } catch (err) {
+      onMsg(`Error: ${err.message}`)
+    }
+  }
+
   if (loading) return <div className="spinner" />
 
   return (
@@ -1012,14 +1025,15 @@ function PlayersTab({ onMsg }) {
       </div>
 
       <div className="players-table card">
-        <div className="players-header">
+        <div className="players-header" style={{ gridTemplateColumns: '1fr 72px 56px 64px 56px' }}>
           <span>Player</span>
           <span>Picks</span>
           <span>Pts</span>
+          <span>Paid</span>
           <span>Admin</span>
         </div>
         {players.map(p => (
-          <div key={p.id} className="player-row">
+          <div key={p.id} className="player-row" style={{ gridTemplateColumns: '1fr 72px 56px 64px 56px' }}>
             <div className="player-info">
               <span className="player-name">{p.display_name}</span>
               <span className="player-email">{p.email}</span>
@@ -1030,6 +1044,13 @@ function PlayersTab({ onMsg }) {
                 : '— None'}
             </span>
             <span className="player-pts">{p.score?.total_points ?? 0}</span>
+            <button
+              className={`toggle-btn toggle-btn-sm${p.paid ? ' on' : ''}`}
+              onClick={() => togglePaid(p.id, p.paid)}
+              style={p.paid ? { background: 'rgba(16,185,129,0.15)', borderColor: '#10b981', color: '#10b981' } : {}}
+            >
+              {p.paid ? '💚 Paid' : '—'}
+            </button>
             <button
               className={`toggle-btn toggle-btn-sm${p.is_admin ? ' on' : ''}`}
               onClick={() => toggleAdmin(p.id, p.is_admin)}
