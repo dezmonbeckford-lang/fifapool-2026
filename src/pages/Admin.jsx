@@ -989,18 +989,21 @@ function PlayersTab({ onMsg }) {
   }
 
   async function togglePaid(userId, currentVal) {
-    // Optimistic update — flip instantly, revert if DB fails
-    setPlayers(prev => prev.map(p => p.id === userId ? { ...p, paid: !currentVal } : p))
+    const newVal = !currentVal
+    // Optimistic update — flip instantly in UI
+    setPlayers(prev => prev.map(p => p.id === userId ? { ...p, paid: newVal } : p))
     try {
       await saveWithRetry(async (signal) => {
-        const { error } = await supabase.from('profiles').update({ paid: !currentVal }).eq('id', userId).abortSignal(signal)
-        if (error) throw error
+        const { error } = await supabase
+          .rpc('set_paid_status', { p_user_id: userId, p_paid: newVal })
+          .abortSignal(signal)
+        if (error) throw new Error(error.message)
       })
-      onMsg(`✓ Marked as ${!currentVal ? 'paid' : 'unpaid'}.`)
+      onMsg(`✓ Marked as ${newVal ? 'paid' : 'unpaid'}.`)
     } catch (err) {
-      // Revert on failure
+      // Revert UI on failure
       setPlayers(prev => prev.map(p => p.id === userId ? { ...p, paid: currentVal } : p))
-      onMsg(`Error: ${err.message}`)
+      onMsg(`Error saving: ${err.message}`)
     }
   }
 
